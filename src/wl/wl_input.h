@@ -8,6 +8,8 @@
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
 
+#include "wl/wl_cursor.h"
+
 struct nd_app;
 
 /* Pointer events arrive scattered and are only coherent at wl_pointer.frame,
@@ -46,6 +48,9 @@ struct nd_input {
   double   px, py;        /* last known pointer position, logical */
   uint32_t enter_serial;  /* required by cursor-shape set_shape */
   bool     has_pointer;
+
+  struct wp_cursor_shape_device_v1 *cursor_dev;
+  nd_cursor cursor;
 };
 
 bool nd_input_init(struct nd_input *in, struct nd_app *app);

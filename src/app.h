@@ -41,6 +41,7 @@ struct nd_app {
   struct nd_input  input;
 
   char    *path;
+  char    *base_name; /* inotify watches the directory, so events need filtering */
   nd_doc  *doc;
   int   watch_fd;
   int   watch_wd;
@@ -48,6 +49,7 @@ struct nd_app {
   struct nd_scroll  scroll;
   struct nd_sidebar sidebar;
 
+  nd_hit   hover;      /* what the pointer is over, in document space */
   unsigned dirty;
   bool     running;
   bool     sidebar_visible;

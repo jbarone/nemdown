@@ -8,6 +8,7 @@
 
 #include "doc/arena.h"
 #include "doc/frontmatter.h"
+#include "doc/hit.h"
 #include "doc/images.h"
 #include "doc/layout.h"
 #include "doc/paint.h"
@@ -176,10 +177,60 @@ void nd_doc_paint(nd_doc *d, cairo_t *cr, double scroll_y, double viewport_h) {
   nd_paint_tree(cr, d->root, scroll_y, viewport_h, d->images);
 }
 
+/* Top-level block index in the high bits, pixels into that block in the low
+ * bits. Block indices survive a reparse far better than absolute offsets do. */
+uint64_t nd_doc_anchor_at(const nd_doc *d, double doc_y) {
+  if (!d->laid_out || d->root->nkids == 0) return 0;
+
+  for (uint32_t i = 0; i < d->root->nkids; i++) {
+    nd_block *k = d->root->kids[i];
+    if (doc_y < k->lay.y + k->lay.h) {
+      double into = doc_y - k->lay.y;
+      if (into < 0) into = 0;
+      if (into > 65535) into = 65535;
+      return ((uint64_t)i << 32) | (uint64_t)(into + 0.5);
+    }
+  }
+  return ((uint64_t)(d->root->nkids - 1) << 32);
+}
+
+double nd_doc_y_for_anchor(const nd_doc *d, uint64_t anchor) {
+  if (!d->laid_out || d->root->nkids == 0) return 0.0;
+
+  uint32_t index = (uint32_t)(anchor >> 32);
+  double   into  = (double)(anchor & 0xffffffffu);
+
+  /* The document may have shrunk since the anchor was taken. */
+  if (index >= d->root->nkids) index = d->root->nkids - 1;
+
+  double y = d->root->kids[index]->lay.y + into;
+  double max = d->content_h - 1.0;
+  if (y < 0) y = 0;
+  if (max > 0 && y > max) y = max;
+  return y;
+}
+
 bool nd_doc_hit_test(nd_doc *d, double x, double doc_y, nd_hit *out) {
-  (void)d; (void)x; (void)doc_y;
   out->kind = ND_HIT_NONE;
-  return false;
+  if (!d->laid_out) return false;
+  return nd_hit_tree(d->root, x, doc_y, out);
+}
+
+/* Flips a `[ ]` / `[x]` in the source file. md4c gives the exact byte offset of
+ * the character between the brackets — the one place in its API that exposes a
+ * source position — so this is a single-byte write, not a re-serialisation. */
+bool nd_doc_toggle_task(nd_doc *d, uint32_t source_offset, bool now_checked) {
+  if (source_offset >= d->raw_len) return false;
+
+  FILE *f = fopen(d->path, "r+b");
+  if (!f) return false;
+  if (fseek(f, (long)source_offset, SEEK_SET) != 0) { fclose(f); return false; }
+  char c = now_checked ? 'x' : ' ';
+  bool ok = fwrite(&c, 1, 1, f) == 1;
+  fclose(f);
+
+  if (ok) d->raw[source_offset] = c;
+  return ok;
 }
 
 struct _PangoContext *nd_doc_pango_context(const nd_doc *d) { return d->pctx; }

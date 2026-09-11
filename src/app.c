@@ -6,10 +6,13 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <spawn.h>
 #include <sys/inotify.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "ui/theme.h"
+#include "wl/wl_cursor.h"
 #include "util/log.h"
 
 /* Time constant for scroll easing. Small enough to feel immediate, large
@@ -143,18 +146,86 @@ void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat) {
   }
 }
 
+/* Reloads from disk, holding the reader's place. */
+static void reload_document(struct nd_app *app) {
+  char *err = NULL;
+  uint64_t anchor = nd_doc_anchor_at(app->doc, app->scroll.offset);
+
+  if (!nd_doc_reload(app->doc, &err)) {
+    nd_warn("%s", err ? err : "reload failed");
+    free(err);
+    return;
+  }
+
+  /* Every pointer handed out by doc.h died with the reload, so the sidebar's
+   * cached hover index has to go too. */
+  app->sidebar.hover_toc = -1;
+  app->hover.kind = ND_HIT_NONE;
+  app->hover.url = NULL;
+
+  double sidebar = app->sidebar_visible ? app->sidebar_w : 0.0;
+  nd_doc_layout(app->doc, (double)app->win.w - sidebar, app->font_scale);
+
+  app->scroll.offset = nd_doc_y_for_anchor(app->doc, anchor);
+  app->scroll.target = app->scroll.offset;
+  app->scroll.animating = false;
+
+  mark(app, ND_DIRTY_ALL | ND_DIRTY_RELAYOUT);
+}
+
+/* posix_spawn with an argv array, never a shell string: a document can contain
+ * any URL it likes and none of it should reach a shell. */
+static void open_external(const char *url) {
+  if (!url || !*url) return;
+  char *argv[] = {(char *)"xdg-open", (char *)url, NULL};
+  extern char **environ;
+  pid_t pid;
+  if (posix_spawnp(&pid, "xdg-open", NULL, NULL, argv, environ) == 0) {
+    /* Reap without blocking; xdg-open forks and returns promptly. */
+    waitpid(pid, NULL, WNOHANG);
+  }
+}
+
+/* Document-space y for a window point in the content pane. */
+static double content_y(const struct nd_app *app, double y) {
+  return y + app->scroll.offset;
+}
+
+static double content_x(const struct nd_app *app, double x) {
+  return x - (app->sidebar_visible ? app->sidebar_w : 0.0);
+}
+
 void nd_app_pointer_motion(struct nd_app *app, double x, double y) {
   if (!app->doc) return;
 
-  int hover = -1;
-  if (app->sidebar_visible && x < app->sidebar_w) {
-    hover = nd_sidebar_toc_at(&app->sidebar, app->sidebar_w, (double)app->win.h,
-                              nd_doc_props(app->doc), nd_doc_toc(app->doc), x, y);
+  bool in_sidebar = app->sidebar_visible && x < app->sidebar_w;
+
+  int toc_hover = -1;
+  if (in_sidebar) {
+    toc_hover = nd_sidebar_toc_at(&app->sidebar, app->sidebar_w,
+                                  (double)app->win.h, nd_doc_props(app->doc),
+                                  nd_doc_toc(app->doc), x, y);
   }
-  if (hover != app->sidebar.hover_toc) {
-    app->sidebar.hover_toc = hover;
+  if (toc_hover != app->sidebar.hover_toc) {
+    app->sidebar.hover_toc = toc_hover;
     mark(app, ND_DIRTY_SIDEBAR);
   }
+
+  nd_hit hit;
+  hit.kind = ND_HIT_NONE;
+  if (!in_sidebar)
+    nd_doc_hit_test(app->doc, content_x(app, x), content_y(app, y), &hit);
+
+  if (hit.kind != app->hover.kind || hit.url != app->hover.url) {
+    app->hover = hit;
+    mark(app, ND_DIRTY_DOC);
+  }
+
+  nd_cursor shape = ND_CURSOR_DEFAULT;
+  if (toc_hover >= 0) shape = ND_CURSOR_POINTER;
+  else if (hit.kind == ND_HIT_LINK || hit.kind == ND_HIT_CHECKBOX)
+    shape = ND_CURSOR_POINTER;
+  nd_cursor_set(app, shape);
 }
 
 void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed) {
@@ -170,14 +241,44 @@ void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed)
       app->scroll.animating = true;
       mark(app, ND_DIRTY_ALL);
     }
+    return;
+  }
+
+  nd_hit hit;
+  if (!nd_doc_hit_test(app->doc, content_x(app, x), content_y(app, y), &hit))
+    return;
+
+  switch (hit.kind) {
+    case ND_HIT_LINK:
+      open_external(hit.url);
+      break;
+
+    case ND_HIT_CHECKBOX:
+      /* Write the byte, then reload so the tree matches the file rather than
+       * guessing at what the edit did. */
+      if (nd_doc_toggle_task(app->doc, hit.source_offset, !hit.checked))
+        reload_document(app);
+      break;
+
+    case ND_HIT_WIKILINK:
+      /* Single-file viewer: styled as a link, but there is nowhere to go. */
+      break;
+
+    default:
+      break;
   }
 }
 
 void nd_app_pointer_leave(struct nd_app *app) {
-  if (app->sidebar.hover_toc != -1) {
-    app->sidebar.hover_toc = -1;
-    mark(app, ND_DIRTY_SIDEBAR);
+  bool dirty = false;
+  if (app->sidebar.hover_toc != -1) { app->sidebar.hover_toc = -1; dirty = true; }
+  if (app->hover.kind != ND_HIT_NONE) {
+    app->hover.kind = ND_HIT_NONE;
+    app->hover.url = NULL;
+    dirty = true;
   }
+  nd_cursor_set(app, ND_CURSOR_DEFAULT);
+  if (dirty) mark(app, ND_DIRTY_ALL);
 }
 
 void nd_app_resized(struct nd_app *app, int w, int h) {
@@ -243,6 +344,16 @@ void nd_app_paint(struct nd_app *app, cairo_t *cr, int w, int h, double scale) {
   cairo_clip(cr);
   cairo_translate(cr, sidebar, 0);
   nd_doc_paint(app->doc, cr, app->scroll.offset, content_h);
+
+  /* Hover feedback lives here rather than in the engine, which stays stateless
+   * with respect to input. */
+  if (app->hover.kind == ND_HIT_LINK || app->hover.kind == ND_HIT_WIKILINK) {
+    double hy = app->hover.y - app->scroll.offset + app->hover.h - 1.0;
+    nd_src(cr, app->hover.kind == ND_HIT_LINK ? CTP_BLUE : CTP_LAVENDER);
+    cairo_rectangle(cr, app->hover.x, nd_snap(hy, scale),
+                    app->hover.w, 1.0 / scale);
+    cairo_fill(cr);
+  }
   cairo_restore(cr);
 }
 
@@ -250,11 +361,22 @@ void nd_app_paint(struct nd_app *app, cairo_t *cr, int w, int h, double scale) {
 
 void nd_app_watch_drain(struct nd_app *app) {
   char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
+  bool touched = false;
   ssize_t len;
+
   while ((len = read(app->watch_fd, buf, sizeof buf)) > 0) {
-    /* Events are consumed but reload is not wired up until the engine lands. */
-    (void)len;
+    for (char *p = buf; p < buf + len; ) {
+      struct inotify_event *e = (struct inotify_event *)p;
+      /* The watch is on the directory, so filter to our own file. */
+      if (e->len && app->base_name && strcmp(e->name, app->base_name) == 0)
+        touched = true;
+      p += sizeof(struct inotify_event) + e->len;
+    }
   }
+
+  /* One save emits several events; coalescing them into a single reload keeps
+   * a rapid :w from reparsing three times. */
+  if (touched) reload_document(app);
 }
 
 /* ---- lifecycle ----------------------------------------------------------- */
@@ -303,8 +425,10 @@ bool nd_app_init(struct nd_app *app, const char *path, char **err) {
   }
 
   char *dup = strdup(app->path);
+  const char *base = dup ? basename(dup) : app->path;
+  app->base_name = strdup(base);
   char title[512];
-  snprintf(title, sizeof title, "nemdown — %s", dup ? basename(dup) : app->path);
+  snprintf(title, sizeof title, "nemdown — %s", base);
   free(dup);
 
   if (!nd_window_create(&app->win, app, title)) {
@@ -329,5 +453,6 @@ void nd_app_finish(struct nd_app *app) {
   nd_input_finish(&app->input);
   nd_wl_disconnect(&app->wl);
   if (app->watch_fd >= 0) close(app->watch_fd);
+  free(app->base_name);
   free(app->path);
 }

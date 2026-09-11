@@ -97,9 +97,20 @@ void nd_doc_set_scale(nd_doc *d, double scale);
 /* cr's origin is the content area's top-left and it is already clipped. */
 void nd_doc_paint(nd_doc *d, cairo_t *cr, double scroll_y, double viewport_h);
 
+/* ---- stable scroll position across reload and reflow -------------------- */
+
+/* Encodes "which block, and how far into it" rather than a raw pixel offset,
+ * so a reload that changes block heights above the viewport does not move the
+ * reader. Without this, every save jumps you back to the top. */
+uint64_t nd_doc_anchor_at(const nd_doc *d, double doc_y);
+double   nd_doc_y_for_anchor(const nd_doc *d, uint64_t anchor);
+
 /* ---- interaction -------------------------------------------------------- */
 
 bool nd_doc_hit_test(nd_doc *d, double x, double doc_y, nd_hit *out);
+
+/* Writes a single byte to the source file, flipping a task checkbox. */
+bool nd_doc_toggle_task(nd_doc *d, uint32_t source_offset, bool now_checked);
 
 /* ---- sidebar data ------------------------------------------------------- */
 
