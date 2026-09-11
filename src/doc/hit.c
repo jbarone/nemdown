@@ -111,8 +111,32 @@ static bool hit_code(nd_block *b, double x, double y, nd_hit *out) {
   return true;
 }
 
+/* The chevron sits at the right end of the title row. */
+#define ND_FOLD_BTN 20.0
+
+static void fold_button_rect(const nd_block *b, double *bx, double *by) {
+  *bx = b->lay.x + b->lay.w - 16.0 - ND_FOLD_BTN;
+  *by = b->lay.y + 10.0;
+}
+
+static bool hit_fold(nd_block *b, double x, double y, nd_hit *out) {
+  if (b->kind != ND_CALLOUT) return false;
+
+  double bx, by;
+  fold_button_rect(b, &bx, &by);
+  if (x < bx || x > bx + ND_FOLD_BTN || y < by || y > by + ND_FOLD_BTN)
+    return false;
+
+  out->kind = ND_HIT_CALLOUT_FOLD;
+  out->checked = b->callout_folded != 0;
+  out->x = bx; out->y = by;
+  out->w = ND_FOLD_BTN; out->h = ND_FOLD_BTN;
+  return true;
+}
+
 static bool hit_block(nd_block *b, double x, double y, nd_hit *out) {
   if (b->kind == ND_CODE) return hit_code(b, x, y, out);
+  if (b->kind == ND_CALLOUT && hit_fold(b, x, y, out)) return true;
 
   if (b->kind == ND_ITEM && hit_checkbox(b, x, y, out)) return true;
 

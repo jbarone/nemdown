@@ -66,6 +66,8 @@ struct builder {
 
   nd_block *leaf;       /* where text() appends; NULL inside containers */
   nd_block *img_alt;    /* image currently collecting its alt text, if any */
+  char      alt_buf[512];
+  size_t    alt_len;
   uint32_t  first_break;
   bool      leaf_implicit; /* leaf was synthesised for bare text, see below */
   struct vec text;      /* char   — current inline text */
@@ -382,17 +384,22 @@ static int enter_span(MD_SPANTYPE type, void *detail, void *ud) {
       MD_SPAN_IMG_DETAIL *d = detail;
       nd_block *img = node_new(b, ND_IMAGE);
       img->img_src = attr_dup(b, &d->src);
+      /* The preprocessor puts an Obsidian `|400` size hint in the title. */
+      img->img_size = attr_dup(b, &d->title);
       adopt(b, img);
       f->flags = 0;
-      /* The alt text is the image's caption (and carries our rewritten size
-       * hint); letting it land in the paragraph would read as stray digits. */
+      /* Alt text belongs to the image as its caption; letting it flow into the
+       * paragraph would read as stray words. */
       f->suppress_text = true;
       b->img_alt = img;
+      b->alt_len = 0;
       break;
     }
     case MD_SPAN_LATEXMATH:
-    case MD_SPAN_LATEXMATH_DISPLAY:
       f->flags = ND_RUN_MATH;
+      break;
+    case MD_SPAN_LATEXMATH_DISPLAY:
+      f->flags = ND_RUN_MATH | ND_RUN_MATH_DISPLAY;
       break;
   }
 
@@ -406,7 +413,16 @@ static int leave_span(MD_SPANTYPE type, void *detail, void *ud) {
   if (b->spsp <= 0) return 0;
 
   struct span_frame *f = &b->spans[--b->spsp];
-  if (f->suppress_text) b->img_alt = NULL;
+  if (f->suppress_text) {
+    if (b->img_alt && b->alt_len) {
+      b->alt_buf[b->alt_len] = '\0';
+      b->img_alt->img_caption.text =
+          nd_arena_strndup(b->a, b->alt_buf, b->alt_len);
+      b->img_alt->img_caption.len = (uint32_t)b->alt_len;
+    }
+    b->img_alt = NULL;
+    b->alt_len = 0;
+  }
   if (f->flags == 0) return 0;
 
   nd_run *r = vec_push(&b->runs);
@@ -423,9 +439,10 @@ static int text_cb(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size, void *ud
 
   for (int i = 0; i < b->spsp; i++) {
     if (b->spans[i].suppress_text) {
-      if (b->img_alt && type != MD_TEXT_SOFTBR && type != MD_TEXT_BR) {
-        /* The rewriter puts an Obsidian `|400` size hint here. */
-        b->img_alt->img_size = nd_arena_strndup(b->a, text, size);
+      if (b->img_alt && type != MD_TEXT_SOFTBR && type != MD_TEXT_BR &&
+          b->alt_len + size < sizeof b->alt_buf - 1) {
+        memcpy(b->alt_buf + b->alt_len, text, size);
+        b->alt_len += size;
       }
       return 0;
     }

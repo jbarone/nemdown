@@ -361,6 +361,29 @@ bool nd_doc_hit_test(nd_doc *d, double x, double doc_y, nd_hit *out) {
   return nd_hit_tree(d->root, x, doc_y, out);
 }
 
+static nd_block *callout_at(nd_block *b, double x, double doc_y) {
+  if (b->kind == ND_CALLOUT &&
+      x >= b->lay.x && x <= b->lay.x + b->lay.w &&
+      doc_y >= b->lay.y && doc_y <= b->lay.y + b->lay.h)
+    return b;
+  for (uint32_t i = 0; i < b->nkids; i++) {
+    nd_block *f = callout_at(b->kids[i], x, doc_y);
+    if (f) return f;
+  }
+  return NULL;
+}
+
+void nd_doc_toggle_fold(nd_doc *d, double x, double doc_y) {
+  if (!d->laid_out) return;
+  nd_block *c = callout_at(d->root, x, doc_y);
+  if (!c) return;
+
+  c->callout_folded = !c->callout_folded;
+  /* Folding changes heights from here down, so the whole document reflows. */
+  d->laid_out = false;
+  nd_doc_layout(d, d->last_viewport_w, d->last_font_scale);
+}
+
 /* Flips a `[ ]` / `[x]` in the source file. md4c gives the exact byte offset of
  * the character between the brackets — the one place in its API that exposes a
  * source position — so this is a single-byte write, not a re-serialisation. */

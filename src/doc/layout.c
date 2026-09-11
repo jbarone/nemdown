@@ -25,6 +25,8 @@
 #define ND_CALLOUT_ICON  26.0
 #define ND_IMG_MAX_H    600.0
 #define ND_IMG_FAIL_H    96.0
+#define ND_MATH_PAD_X    16.0
+#define ND_MATH_PAD_Y    12.0
 
 PangoContext *nd_pango_context_new(void) {
   PangoFontMap *fm = pango_cairo_font_map_get_default();
@@ -256,6 +258,17 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
       break;
     }
 
+    case ND_MATH_BLOCK: {
+      const nd_style *st = &nd_styles[ND_ST_MATH];
+      b->lay.pl = nd_layout_for(ctx, &b->inl, st, w - 2 * ND_MATH_PAD_X);
+      pango_layout_set_alignment(b->lay.pl, PANGO_ALIGN_CENTER);
+      int pw, ph;
+      pango_layout_get_pixel_size(b->lay.pl, &pw, &ph);
+      b->lay.h = ph + 2 * ND_MATH_PAD_Y;
+      y += b->lay.h;
+      break;
+    }
+
     case ND_HR:
       b->lay.h = 1.0;
       y += 1.0;
@@ -432,6 +445,7 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
       if (!have || nw < 1 || nh < 1) {
         b->lay.img_w = 0;
         b->lay.h = ND_IMG_FAIL_H;
+        b->lay.x = x;
         y += b->lay.h;
         break;
       }
@@ -461,6 +475,16 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
       b->lay.x = x + (w - want_w) / 2.0; /* centred in the column */
       b->lay.h = want_h;
       y += want_h;
+
+      if (b->img_caption.len) {
+        const nd_style *cs = &nd_styles[ND_ST_CAPTION];
+        b->lay.marker = nd_layout_for(ctx, &b->img_caption, cs, w);
+        pango_layout_set_alignment(b->lay.marker, PANGO_ALIGN_CENTER);
+        int cw, chh;
+        pango_layout_get_pixel_size(b->lay.marker, &cw, &chh);
+        b->lay.h += cs->space_before + chh;
+        y += cs->space_before + chh;
+      }
       break;
     }
 

@@ -86,6 +86,10 @@ static uint32_t next_deadline(const struct nd_app *app) {
 
   if (app->copied_until_ms) best = app->copied_until_ms;
 
+  /* Nothing else would wake us to finish a debounced reload. */
+  if (app->reload_at_ms && (!best || app->reload_at_ms < best))
+    best = app->reload_at_ms;
+
   /* The scrollbar hold expires silently: nothing else would wake us to start
    * the fade. Once it IS fading, the frame callback carries it. */
   if (app->scrollbar_alpha >= 1.0 && app->scroll_activity_ms) {
@@ -219,6 +223,10 @@ void nd_app_tick(struct nd_app *app) {
   if (app->copied_until_ms && nd_now_ms() >= app->copied_until_ms) {
     app->copied_until_ms = 0;
     app->dirty |= ND_DIRTY_DOC;
+  }
+  if (app->reload_at_ms && nd_now_ms() >= app->reload_at_ms) {
+    app->reload_at_ms = 0;
+    reload_document(app);
   }
   /* The hold expiring is what starts the fade; without this the bars would sit
    * solid until some other event happened to request a frame. */
@@ -577,7 +585,7 @@ void nd_app_pointer_motion(struct nd_app *app, double x, double y) {
   nd_cursor shape = ND_CURSOR_DEFAULT;
   if (toc_hover >= 0) shape = ND_CURSOR_POINTER;
   else if (hit.kind == ND_HIT_LINK || hit.kind == ND_HIT_CHECKBOX ||
-           hit.kind == ND_HIT_CODE_COPY)
+           hit.kind == ND_HIT_CODE_COPY || hit.kind == ND_HIT_CALLOUT_FOLD)
     shape = ND_CURSOR_POINTER;
   nd_cursor_set(app, shape);
 }
@@ -666,6 +674,11 @@ void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed,
       mark(app, ND_DIRTY_DOC);
       break;
     }
+
+    case ND_HIT_CALLOUT_FOLD:
+      nd_doc_toggle_fold(app->doc, cx, cy);
+      mark(app, ND_DIRTY_ALL | ND_DIRTY_RELAYOUT);
+      break;
 
     case ND_HIT_WIKILINK:
       /* Single-file viewer: styled as a link, but there is nowhere to go. */
@@ -877,9 +890,10 @@ void nd_app_watch_drain(struct nd_app *app) {
     }
   }
 
-  /* One save emits several events; coalescing them into a single reload keeps
-   * a rapid :w from reparsing three times. */
-  if (touched) reload_document(app);
+  /* One save emits several events, and an editor's write-then-rename can
+   * straddle two poll wake-ups. Arming a deadline coalesces the burst into a
+   * single reload instead of reparsing two or three times. */
+  if (touched) app->reload_at_ms = nd_now_ms() + ND_INOTIFY_DEBOUNCE_MS;
 }
 
 /* ---- lifecycle ----------------------------------------------------------- */

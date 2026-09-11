@@ -33,6 +33,7 @@ typedef enum {
   ND_RUN_WIKILINK  = 1u << 6,
   ND_RUN_MATH      = 1u << 7,
   ND_RUN_HIGHLIGHT = 1u << 8,
+  ND_RUN_MATH_DISPLAY = 1u << 9, /* $$...$$, which becomes its own block */
 } nd_run_flags;
 
 typedef struct {
@@ -89,6 +90,7 @@ struct nd_block {
   uint32_t code_len;
   char    *img_src;
   char    *img_size;     /* Obsidian `|400` or `|400x300` hint, or NULL */
+  nd_inline img_caption; /* the alt text, rendered beneath the image */
 
   nd_layout lay;
 };

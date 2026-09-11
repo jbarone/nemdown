@@ -165,11 +165,17 @@ static void rewrite_embeds(const char *src, size_t len, struct buf *out,
         const char *size = bar ? bar + 1 : NULL;
         size_t slen = bar ? inner_len - tlen - 1 : 0;
 
-        buf_put(out, "![", 2);
-        if (slen) buf_put(out, size, slen); /* alt text carries the size hint */
-        buf_put(out, "](<", 3);
+        /* The size hint goes in the TITLE, not the alt text: alt is the
+         * caption, and an embed can have both. */
+        buf_put(out, "![](<", 5);
         buf_put(out, inner, tlen);
-        buf_put(out, ">)", 2);
+        buf_put(out, ">", 1);
+        if (slen) {
+          buf_put(out, " \"", 2);
+          buf_put(out, size, slen);
+          buf_put(out, "\"", 1);
+        }
+        buf_put(out, ")", 1);
         i = j + 2;
         /* Everything after this point is shifted; record where. */
         edits_put(edits, out->len, i);

@@ -91,10 +91,34 @@ static void promote_images(nd_block *b) {
   if (text_empty) b->inl.len = 0;
 }
 
+/* A paragraph that is nothing but display math reads better as its own panel:
+ * it can be centred and labelled instead of sitting inline. */
+static void promote_math(nd_block *b) {
+  if (b->kind != ND_PARA || b->inl.nruns == 0) return;
+
+  const nd_run *disp = NULL;
+  for (uint32_t i = 0; i < b->inl.nruns; i++) {
+    if (b->inl.runs[i].flags & ND_RUN_MATH_DISPLAY) {
+      if (disp) return; /* more than one: leave it as a paragraph */
+      disp = &b->inl.runs[i];
+    }
+  }
+  if (!disp) return;
+
+  /* Only if the run covers the whole paragraph, ignoring surrounding space. */
+  for (uint32_t i = 0; i < b->inl.len; i++) {
+    if (i >= disp->start && i < disp->end) continue;
+    char c = b->inl.text[i];
+    if (c != ' ' && c != '\n' && c != '\t') return;
+  }
+  b->kind = ND_MATH_BLOCK;
+}
+
 static void walk(struct nd_arena *a, nd_block *b) {
   if (b->kind == ND_QUOTE) detect_callout(a, b);
   if (b->inl.len) nd_inline_extract_highlights(a, &b->inl);
   promote_images(b);
+  promote_math(b);
   for (uint32_t i = 0; i < b->nkids; i++) walk(a, b->kids[i]);
 }
 

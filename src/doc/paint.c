@@ -173,6 +173,27 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
         cairo_move_to(cr, b->lay.x + 16.0 + 26.0, b->lay.y + 12.0);
         pango_cairo_show_layout(cr, b->lay.marker);
       }
+
+      /* A chevron, drawn rather than a glyph so its rotation is exact. */
+      {
+        double cx = b->lay.x + b->lay.w - 16.0 - 10.0;
+        double cy = b->lay.y + 20.0;
+        nd_src_a(cr, ct->color, 0.75);
+        cairo_set_line_width(cr, 1.6);
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+        if (b->callout_folded) {         /* pointing right: collapsed */
+          cairo_move_to(cr, cx - 2.0, cy - 4.0);
+          cairo_line_to(cr, cx + 2.5, cy);
+          cairo_line_to(cr, cx - 2.0, cy + 4.0);
+        } else {                          /* pointing down: expanded */
+          cairo_move_to(cr, cx - 4.0, cy - 2.0);
+          cairo_line_to(cr, cx, cy + 2.5);
+          cairo_line_to(cr, cx + 4.0, cy - 2.0);
+        }
+        cairo_stroke(cr);
+      }
+
       if (!b->callout_folded) paint_children(cr, b, y0, y1);
       break;
     }
@@ -222,6 +243,29 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
       paint_children(cr, b, y0, y1);
       break;
 
+    case ND_MATH_BLOCK: {
+      nd_src(cr, CTP_SURFACE0);
+      rounded_rect(cr, b->lay.x, b->lay.y, b->lay.w, b->lay.h, 6.0);
+      cairo_fill(cr);
+
+      if (b->lay.pl) {
+        nd_src(cr, CTP_LAVENDER);
+        cairo_move_to(cr, b->lay.x + 16.0, b->lay.y + 12.0);
+        pango_cairo_show_layout(cr, b->lay.pl);
+      }
+
+      /* Says plainly that this is maths we are showing, not typesetting. */
+      nd_src(cr, CTP_OVERLAY0);
+      cairo_select_font_face(cr, ND_MONO, CAIRO_FONT_SLANT_NORMAL,
+                             CAIRO_FONT_WEIGHT_NORMAL);
+      cairo_set_font_size(cr, 10.0);
+      cairo_text_extents_t ext;
+      cairo_text_extents(cr, "TeX", &ext);
+      cairo_move_to(cr, b->lay.x + b->lay.w - ext.width - 10.0, b->lay.y + 15.0);
+      cairo_show_text(cr, "TeX");
+      break;
+    }
+
     case ND_HR:
       nd_src(cr, CTP_SURFACE1);
       cairo_rectangle(cr, b->lay.x, b->lay.y, b->lay.w, 1.0);
@@ -240,6 +284,16 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
           cairo_rectangle(cr, 0, 0, b->lay.img_w, b->lay.img_h);
           cairo_fill(cr);
           cairo_restore(cr);
+
+          if (b->lay.marker) {
+            const nd_style *cs = &nd_styles[ND_ST_CAPTION];
+            nd_src(cr, cs->color);
+            /* The caption is centred over the COLUMN, not the image, so it
+             * stays centred when the image is narrower than the text. */
+            cairo_move_to(cr, b->lay.x - (b->lay.w - b->lay.img_w) / 2.0,
+                          b->lay.y + b->lay.img_h + cs->space_before);
+            pango_cairo_show_layout(cr, b->lay.marker);
+          }
           break;
         }
       }

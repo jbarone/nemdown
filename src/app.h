@@ -42,6 +42,7 @@ struct nd_app {
 
   char    *path;
   char    *base_name; /* inotify watches the directory, so events need filtering */
+  uint32_t reload_at_ms; /* debounce deadline: one save emits several events */
   nd_doc  *doc;
   int   watch_fd;
   int   watch_wd;

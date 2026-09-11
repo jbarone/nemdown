@@ -69,7 +69,8 @@ typedef enum {
   ND_HIT_IMAGE, ND_HIT_TEXT,
   /* Over a code block, and over its copy button specifically. The button is
    * only drawn on hover, so the shell needs to know about the former too. */
-  ND_HIT_CODE, ND_HIT_CODE_COPY
+  ND_HIT_CODE, ND_HIT_CODE_COPY,
+  ND_HIT_CALLOUT_FOLD
 } nd_hit_kind;
 
 typedef struct {
@@ -115,6 +116,9 @@ double   nd_doc_y_for_anchor(const nd_doc *d, uint64_t anchor);
 /* ---- interaction -------------------------------------------------------- */
 
 bool nd_doc_hit_test(nd_doc *d, double x, double doc_y, nd_hit *out);
+
+/* Collapses or expands the callout whose fold chevron was hit. */
+void nd_doc_toggle_fold(nd_doc *d, double x, double doc_y);
 
 /* Writes a single byte to the source file, flipping a task checkbox. */
 bool nd_doc_toggle_task(nd_doc *d, uint32_t source_offset, bool now_checked);

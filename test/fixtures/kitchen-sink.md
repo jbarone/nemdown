@@ -65,3 +65,9 @@ $$\frac{a}{b} = \sum_{i=0}^{n} x_i$$
 ---
 
 ![alt text](image.png)
+
+> [!tip]- Folded by default
+> This body starts collapsed, because of the `-` after the type.
+
+> [!example]+ Explicitly expanded
+> The `+` form starts open.

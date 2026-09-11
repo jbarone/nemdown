@@ -24,7 +24,8 @@ Ctrl-C             copy                q / Esc        quit
 ```
 
 Clicking a contents entry scrolls to that heading. Clicking a link opens it;
-clicking a task checkbox toggles it **in the file**. Hovering a code fence
+clicking a task checkbox toggles it **in the file**. Callouts fold and unfold
+from the chevron in their title row. Hovering a code fence
 reveals a copy button in its top-right corner. Code does not wrap. Pan an overflowing fence
 with `h`/`l`, by scrolling sideways, or with Shift and a wheel; a fade at the
 edge shows there is more. The keys act on the visible fence nearest the middle
@@ -57,7 +58,8 @@ Aims at Obsidian's reading view. Supported: headings, emphasis and nesting,
 inline and fenced code with syntax highlighting, `==highlights==`, links and
 `[[wikilinks]]`, nested and ordered lists, task checkboxes, blockquotes,
 Obsidian callouts (`> [!warning] Title`), tables with alignment, horizontal
-rules, YAML frontmatter, and `$math$` styled but not typeset.
+rules, YAML frontmatter, and `$math$` styled but not typeset — display `$$math$$` gets its own labelled
+panel. Images carry their alt text as a caption.
 
 Images are decoded (PNG/JPEG/GIF/BMP/TIFF via gdk-pixbuf, SVG via librsvg),
 including Obsidian's `![[img.png|400]]` size hints. Missing, unreadable and
