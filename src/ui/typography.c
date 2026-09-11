@@ -6,7 +6,7 @@
 
 const nd_style nd_styles[ND_ST_COUNT] = {
   /*                  family    size  line  bold  ital  colour          before after */
-  [ND_ST_BODY]        = {ND_SANS, 16,   26,   false, false, CTP_TEXT,      0,  16},
+  [ND_ST_BODY]        = {ND_SANS, 14,   23,   false, false, CTP_TEXT,      0,  16},
   [ND_ST_H1]          = {ND_SANS, 30,   39,   true,  false, CTP_TEAL,     32,  16},
   [ND_ST_H2]          = {ND_SANS, 25,   33,   true,  false, CTP_TEAL,     28,  12},
   [ND_ST_H3]          = {ND_SANS, 21,   28,   true,  false, CTP_LAVENDER, 24,  10},

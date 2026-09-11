@@ -215,16 +215,24 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
       for (nd_block *p = b->parent; p; p = p->parent)
         if (p->kind == ND_LIST) depth++;
 
+      /* Marker geometry follows the body style rather than fixed numbers, so
+       * changing the type scale (or zooming) keeps bullets and checkboxes
+       * aligned with the text they belong to. */
+      const nd_style *bs = &nd_styles[ND_ST_BODY];
+      double baseline = b->lay.y + bs->line_height * 0.72;
+
       nd_src(cr, CTP_OVERLAY1);
       cairo_select_font_face(cr, ND_SANS, CAIRO_FONT_SLANT_NORMAL,
                              CAIRO_FONT_WEIGHT_NORMAL);
-      cairo_set_font_size(cr, 16.0);
-      cairo_move_to(cr, b->lay.x + 8.0, b->lay.y + 18.0);
+      cairo_set_font_size(cr, bs->size);
+      cairo_move_to(cr, b->lay.x + 8.0, baseline);
 
       if (b->item_is_task) {
         /* Drawn, not a glyph: a font checkbox gives no control over stroke
          * weight and its centring depends on metrics we would have to fight. */
-        double bx = b->lay.x + 6.0, by = b->lay.y + 5.0, s = 16.0;
+        double s = bs->size;
+        double bx = b->lay.x + 6.0;
+        double by = b->lay.y + (bs->line_height - s) / 2.0;
         rounded_rect(cr, bx, by, s, s, 4.0);
         if (b->item_checked) {
           nd_src(cr, CTP_TEAL);
