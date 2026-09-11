@@ -42,6 +42,10 @@
 /* One h/l step. Roughly three monospace characters at the default size. */
 #define ND_PAN_STEP     36.0
 
+/* Scrollbars stay solid this long after the last scroll, then fade. */
+#define ND_SB_HOLD_MS   800
+#define ND_SB_FADE_TAU  0.12
+
 /* Monotonic milliseconds, matching the units the frame callback reports. */
 static uint32_t nd_now_ms(void) {
   struct timespec ts;
@@ -60,27 +64,44 @@ static void mark(struct nd_app *app, unsigned bits) {
 }
 
 bool nd_app_is_dirty(const struct nd_app *app) {
+  /* A scrollbar that is merely HELD solid needs no frames — only one that is
+   * actively fading does. Treating "visible" as dirty would render at the
+   * display's full rate for the whole hold, doing nothing. */
+  bool fading = app->scrollbar_alpha > 0.01 && app->scroll_activity_ms &&
+                (nd_now_ms() - app->scroll_activity_ms) >= ND_SB_HOLD_MS;
+
   return app->dirty != ND_DIRTY_NONE || app->scroll.animating ||
-         app->sidebar_anim;
+         app->sidebar_anim || fading;
 }
 
 void nd_app_clear_dirty(struct nd_app *app) {
   app->dirty = ND_DIRTY_NONE;
 }
 
-int nd_app_poll_timeout(const struct nd_app *app) {
-  /* Animation is paced by frame callbacks, not by the poll timeout, so there
-   * is nothing to wake up for while it runs. Returning 0 here is the classic
-   * way to burn a core doing nothing.
-   *
-   * The sole exception is the copy confirmation, which has to clear itself
-   * with no further input to trigger a frame. */
-  if (app->copied_until_ms) {
-    uint32_t now = nd_now_ms();
-    if (now >= app->copied_until_ms) return 0;
-    return (int)(app->copied_until_ms - now);
+/* Earliest deadline of any timed effect, or 0 for none. Animation is paced by
+ * frame callbacks, so the poll timeout exists only for effects that must fire
+ * with no further input to trigger a frame. */
+static uint32_t next_deadline(const struct nd_app *app) {
+  uint32_t best = 0;
+
+  if (app->copied_until_ms) best = app->copied_until_ms;
+
+  /* The scrollbar hold expires silently: nothing else would wake us to start
+   * the fade. Once it IS fading, the frame callback carries it. */
+  if (app->scrollbar_alpha >= 1.0 && app->scroll_activity_ms) {
+    uint32_t hold = app->scroll_activity_ms + ND_SB_HOLD_MS;
+    if (!best || hold < best) best = hold;
   }
-  return -1;
+  return best;
+}
+
+int nd_app_poll_timeout(const struct nd_app *app) {
+  uint32_t deadline = next_deadline(app);
+  if (!deadline) return -1;
+
+  uint32_t now = nd_now_ms();
+  if (now >= deadline) return 0;
+  return (int)(deadline - now);
 }
 
 /* ---- scrolling ----------------------------------------------------------- */
@@ -91,7 +112,24 @@ static void scroll_clamp(struct nd_app *app) {
   if (s->target > s->max) s->target = s->max;
 }
 
+static void note_scroll_activity(struct nd_app *app) {
+  app->scroll_activity_ms = nd_now_ms();
+  app->scrollbar_alpha = 1.0;
+}
+
 void nd_app_scroll_by(struct nd_app *app, double dy, bool immediate) {
+  note_scroll_activity(app);
+
+  /* The sidebar's panes scroll independently, and the wheel belongs to
+   * whichever one the pointer is over. */
+  if (app->sidebar_visible && app->input.has_pointer &&
+      app->input.px < app->sidebar_w) {
+    nd_pane pane = nd_sidebar_pane_at(&app->sidebar, app->input.py);
+    nd_sidebar_scroll(&app->sidebar, pane, dy);
+    mark(app, ND_DIRTY_SIDEBAR);
+    return;
+  }
+
   struct nd_scroll *s = &app->scroll;
   s->target += dy;
   scroll_clamp(app);
@@ -123,7 +161,23 @@ void nd_app_scroll_settle(struct nd_app *app) {
   mark(app, ND_DIRTY_ALL);
 }
 
+static void scrollbar_animate(struct nd_app *app, uint32_t time_ms) {
+  if (app->scrollbar_alpha <= 0.0) return;
+
+  uint32_t since = time_ms - app->scroll_activity_ms;
+  if (since < ND_SB_HOLD_MS) return; /* still held solid */
+
+  double dt = 1.0 / 60.0;
+  app->scrollbar_alpha -= (1.0 - exp(-dt / ND_SB_FADE_TAU)) * app->scrollbar_alpha;
+  if (app->scrollbar_alpha < 0.02) app->scrollbar_alpha = 0.0;
+
+  app->sidebar.props_alpha = app->scrollbar_alpha;
+  app->sidebar.toc_alpha = app->scrollbar_alpha;
+  app->dirty |= ND_DIRTY_ALL;
+}
+
 void nd_app_animate(struct nd_app *app, uint32_t time_ms) {
+  scrollbar_animate(app, time_ms);
   sidebar_animate(app, time_ms);
 
   struct nd_scroll *s = &app->scroll;
@@ -166,6 +220,11 @@ void nd_app_tick(struct nd_app *app) {
     app->copied_until_ms = 0;
     app->dirty |= ND_DIRTY_DOC;
   }
+  /* The hold expiring is what starts the fade; without this the bars would sit
+   * solid until some other event happened to request a frame. */
+  if (app->scrollbar_alpha >= 1.0 && app->scroll_activity_ms &&
+      nd_now_ms() - app->scroll_activity_ms >= ND_SB_HOLD_MS)
+    app->dirty |= ND_DIRTY_ALL;
   if (nd_app_is_dirty(app)) nd_window_damage(&app->win);
 }
 
@@ -706,6 +765,8 @@ void nd_app_paint(struct nd_app *app, cairo_t *cr, int w, int h, double scale) {
     cairo_fill(cr);
 
     app->sidebar.active_toc = nd_toc_active(app->doc, app->scroll.offset);
+    app->sidebar.props_alpha = app->scrollbar_alpha;
+    app->sidebar.toc_alpha = app->scrollbar_alpha;
 
     cairo_save(cr);
     cairo_rectangle(cr, 0, 0, sidebar, h);
@@ -718,6 +779,29 @@ void nd_app_paint(struct nd_app *app, cairo_t *cr, int w, int h, double scale) {
     /* Snapped, or a 1px rule straddles a half device pixel at 1.5x and blurs. */
     nd_src(cr, app->dragging ? ND_ACCENT : ND_DIVIDER);
     cairo_rectangle(cr, nd_snap(sidebar, scale), 0, 1.0 / scale, h);
+    cairo_fill(cr);
+  }
+
+  /* Document scrollbar, over the content pane's right edge. */
+  if (app->scrollbar_alpha > 0.01 && app->scroll.max > 1.0) {
+    double track = content_h - 8.0;
+    double frac = content_h / (content_h + app->scroll.max);
+    double thumb = track * frac;
+    if (thumb < 28.0) thumb = 28.0;
+
+    double t = app->scroll.offset / app->scroll.max;
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+
+    double bx = (double)w - 4.0 - 3.0;
+    double by = 4.0 + t * (track - thumb);
+
+    nd_src_a(cr, CTP_OVERLAY0, 0.45 * app->scrollbar_alpha);
+    cairo_new_sub_path(cr);
+    cairo_arc(cr, bx + 2.0, by + 2.0,         2.0, G_PI, 3 * G_PI / 2);
+    cairo_arc(cr, bx + 2.0, by + thumb - 2.0, 2.0, G_PI / 2, G_PI);
+    cairo_close_path(cr);
+    cairo_rectangle(cr, bx, by + 2.0, 4.0, thumb - 4.0);
     cairo_fill(cr);
   }
 

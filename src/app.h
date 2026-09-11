@@ -54,6 +54,10 @@ struct nd_app {
    * visibly acknowledged. This is the one thing that needs a timed wake-up. */
   uint32_t copied_until_ms;
   double   copied_x, copied_y;
+
+  /* Overlay scrollbars: full opacity while scrolling, then a fade. */
+  uint32_t scroll_activity_ms;
+  double   scrollbar_alpha;
   unsigned dirty;
   bool     running;
   bool     sidebar_visible;

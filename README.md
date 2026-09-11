@@ -32,6 +32,9 @@ of the window. Drag to select text,
 double-click for a word, triple-click for a block. Drag the divider to resize
 the sidebar.
 
+The sidebar's two panes scroll independently — the wheel goes to whichever one
+the pointer is over. Overlay scrollbars appear while scrolling and fade out.
+
 Esc closes the search field, then clears a selection, then quits.
 
 ## Building

@@ -134,10 +134,10 @@ static double paint_value(struct nd_sidebar *sb, cairo_t *cr,
   return y + th + SB_ROW_GAP;
 }
 
-static double props_pane_height(struct nd_sidebar *sb, const nd_props *props,
-                                double w, double max_h) {
-  /* Measured by painting to a throwaway surface: cheaper to write than a
-   * second measure-only path that could drift out of sync with the painter. */
+/* Measured by laying out against a throwaway surface: cheaper to write than a
+ * second measure-only path that could drift out of sync with the painter. */
+static double props_content_height(struct nd_sidebar *sb, const nd_props *props,
+                                   double w) {
   cairo_surface_t *cs = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
   cairo_t *cr = cairo_create(cs);
   double y = SB_PAD_Y + 18.0;
@@ -148,8 +148,31 @@ static double props_pane_height(struct nd_sidebar *sb, const nd_props *props,
   }
   cairo_destroy(cr);
   cairo_surface_destroy(cs);
-  y += SB_PAD_Y;
-  return y > max_h ? max_h : y;
+  return y + SB_PAD_Y;
+}
+
+/* A 4px overlay bar, drawn only when the content actually overflows. */
+static void pane_scrollbar(cairo_t *cr, double pane_x, double pane_y,
+                           double pane_w, double pane_h, double content_h,
+                           double scroll, double alpha) {
+  if (alpha <= 0.01 || content_h <= pane_h + 1.0) return;
+
+  double track = pane_h - 8.0;
+  double frac = pane_h / content_h;
+  double thumb = track * frac;
+  if (thumb < 24.0) thumb = 24.0;
+
+  double max_scroll = content_h - pane_h;
+  double t = max_scroll > 0 ? scroll / max_scroll : 0;
+  if (t < 0) t = 0;
+  if (t > 1) t = 1;
+
+  double x = pane_x + pane_w - 4.0 - 3.0;
+  double y = pane_y + 4.0 + t * (track - thumb);
+
+  nd_src_a(cr, CTP_OVERLAY0, 0.45 * alpha);
+  rounded(cr, x, y, 4.0, thumb, 2.0);
+  cairo_fill(cr);
 }
 
 void nd_sidebar_paint(struct nd_sidebar *sb, cairo_t *cr, double w, double h,
@@ -158,10 +181,28 @@ void nd_sidebar_paint(struct nd_sidebar *sb, cairo_t *cr, double w, double h,
   (void)title;
 
   double avail = w - 2 * SB_PAD_X;
-  double props_h = props->count || props->error
-      ? props_pane_height(sb, props, w, h * SB_PROPS_MAX_FRAC)
-      : 0.0;
+
+  sb->view_h = h;
+  sb->props_content_h = (props->count || props->error)
+      ? props_content_height(sb, props, w) : 0.0;
+
+  /* The pane is capped so the contents pane always has room; the content can
+   * be taller, which is what the pane's own scroll offset is for. */
+  double cap = h * SB_PROPS_MAX_FRAC;
+  double props_h = sb->props_content_h > cap ? cap : sb->props_content_h;
   sb->props_h = props_h;
+
+  sb->toc_content_h = toc->count
+      ? (double)toc->count * SB_TOC_ROW + SB_PAD_Y + 20.0 + SB_PAD_Y : 0.0;
+
+  /* Clamp after a reload or resize may have shrunk the content. */
+  double pmax = sb->props_content_h - props_h;
+  if (pmax < 0) pmax = 0;
+  if (sb->props_scroll > pmax) sb->props_scroll = pmax;
+
+  double tmax = sb->toc_content_h - (h - props_h);
+  if (tmax < 0) tmax = 0;
+  if (sb->toc_scroll > tmax) sb->toc_scroll = tmax;
 
   /* ---- properties ---- */
   if (props_h > 0) {
@@ -200,6 +241,9 @@ void nd_sidebar_paint(struct nd_sidebar *sb, cairo_t *cr, double w, double h,
     }
     cairo_restore(cr);
 
+    pane_scrollbar(cr, 0, 0, w, props_h, sb->props_content_h,
+                   sb->props_scroll, sb->props_alpha);
+
     nd_src(cr, CTP_SURFACE0);
     cairo_rectangle(cr, 0, nd_snap(props_h, scale), w, 1.0 / scale);
     cairo_fill(cr);
@@ -211,9 +255,13 @@ void nd_sidebar_paint(struct nd_sidebar *sb, cairo_t *cr, double w, double h,
   cairo_rectangle(cr, 0, props_h, w, h - props_h);
   cairo_clip(cr);
 
+  /* The heading stays put; only the entries scroll under it. */
   section_label(sb, cr, "CONTENTS", SB_PAD_X, ty);
   ty += 20.0;
 
+  cairo_save(cr);
+  cairo_rectangle(cr, 0, ty, w, h - ty);
+  cairo_clip(cr);
   cairo_translate(cr, 0, -sb->toc_scroll);
 
   for (size_t i = 0; i < toc->count; i++) {
@@ -243,6 +291,34 @@ void nd_sidebar_paint(struct nd_sidebar *sb, cairo_t *cr, double w, double h,
     g_object_unref(pl);
   }
   cairo_restore(cr);
+  cairo_restore(cr);
+
+  pane_scrollbar(cr, 0, props_h, w, h - props_h, sb->toc_content_h,
+                 sb->toc_scroll, sb->toc_alpha);
+}
+
+nd_pane nd_sidebar_pane_at(const struct nd_sidebar *sb, double y) {
+  if (sb->props_h > 0 && y < sb->props_h) return ND_PANE_PROPS;
+  return ND_PANE_TOC;
+}
+
+bool nd_sidebar_scroll(struct nd_sidebar *sb, nd_pane pane, double dy) {
+  double *scroll, max;
+
+  if (pane == ND_PANE_PROPS) {
+    scroll = &sb->props_scroll;
+    max = sb->props_content_h - sb->props_h;
+  } else {
+    scroll = &sb->toc_scroll;
+    max = sb->toc_content_h - (sb->view_h - sb->props_h);
+  }
+  if (max < 0) max = 0;
+
+  double before = *scroll;
+  *scroll += dy;
+  if (*scroll < 0) *scroll = 0;
+  if (*scroll > max) *scroll = max;
+  return *scroll != before;
 }
 
 int nd_sidebar_toc_at(const struct nd_sidebar *sb, double w, double h,
