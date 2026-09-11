@@ -25,8 +25,11 @@ ifeq ($(origin CC),default)
   CC := clang
 endif
 
+# gio-2.0 is for the desktop portal's file chooser (GDBus lives in gio). It
+# arrives transitively through librsvg today, but a transitive link is not a
+# promise, and glib-2.0 is wanted directly for its UTF-8 helpers besides.
 PKGS := wayland-client xkbcommon cairo pangocairo md4c yaml-0.1 \
-        gdk-pixbuf-2.0 librsvg-2.0
+        gdk-pixbuf-2.0 librsvg-2.0 gio-2.0 glib-2.0
 
 ifneq ($(shell pkg-config --exists $(PKGS) && echo ok),ok)
   $(error missing dependencies: run `pkg-config --print-errors $(PKGS)`)
@@ -177,6 +180,7 @@ run: debug
 install: release
 	install -Dm755 build/release/nemdown $(DESTDIR)$(PREFIX)/bin/nemdown
 	install -Dm644 nemdown.desktop $(DESTDIR)$(PREFIX)/share/applications/nemdown.desktop
+	install -Dm644 nemdown.svg $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/nemdown.svg
 	install -Dm644 README.md $(DESTDIR)$(PREFIX)/share/doc/nemdown/README.md
 	# MIT is not in /usr/share/licenses/common, so the text has to ship: an
 	# Arch package without it fails namcap, and the licence requires it anyway.
@@ -184,7 +188,8 @@ install: release
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/nemdown \
-	      $(DESTDIR)$(PREFIX)/share/applications/nemdown.desktop
+	      $(DESTDIR)$(PREFIX)/share/applications/nemdown.desktop \
+	      $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/nemdown.svg
 	rm -rf $(DESTDIR)$(PREFIX)/share/doc/nemdown \
 	       $(DESTDIR)$(LICENSEDIR)
 

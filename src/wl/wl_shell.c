@@ -52,7 +52,8 @@ static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
     xdg_wm_base_add_listener(wl->wm_base, &wm_base_listener, wl);
   } else if (strcmp(iface, wl_seat_interface.name) == 0) {
     BIND(seat, wl_seat, 9);
-    nd_input_bind_seat(wl->app, wl->seat, ND_MIN(version, 9));
+    wl->seat_version = ND_MIN(version, 9);
+    nd_input_bind_seat(wl->app, wl->seat, wl->seat_version);
   } else if (strcmp(iface, wp_viewporter_interface.name) == 0) {
     BIND(viewporter, wp_viewporter, 1);
   } else if (strcmp(iface, wp_fractional_scale_manager_v1_interface.name) == 0) {
@@ -125,6 +126,15 @@ int nd_wl_display_error(struct nd_wl *wl) {
 }
 
 void nd_wl_disconnect(struct nd_wl *wl) {
+  /* The seat was bound and never given back -- an audit noted it and it then
+   * went unfixed, which is what a process-lifetime leak buys you: nothing
+   * notices until a sanitizer watches a clean exit. release is the destructor
+   * request, but it only exists from version 5. */
+  if (wl->seat) {
+    if (wl->seat_version >= 5) wl_seat_release(wl->seat);
+    else                       wl_seat_destroy(wl->seat);
+    wl->seat = NULL;
+  }
   if (wl->deco_mgr)   zxdg_decoration_manager_v1_destroy(wl->deco_mgr);
   if (wl->cursor_mgr) wp_cursor_shape_manager_v1_destroy(wl->cursor_mgr);
   if (wl->frac_mgr)   wp_fractional_scale_manager_v1_destroy(wl->frac_mgr);
@@ -171,6 +181,9 @@ int nd_wl_dispatch(struct nd_app *app) {
     {.fd = wl_fd,                 .events = POLLIN},
     {.fd = app->input.repeat_fd,  .events = POLLIN},
     {.fd = app->watch_fd,         .events = POLLIN},
+    /* The Open dialog's worker signals through this. -1 while idle, which
+     * poll ignores, so there is nothing to arm or disarm. */
+    {.fd = nd_filechooser_fd(&app->chooser), .events = POLLIN},
   };
   const int nfds = (int)(sizeof pfds / sizeof pfds[0]);
 
@@ -190,6 +203,7 @@ int nd_wl_dispatch(struct nd_app *app) {
   if (pfds[0].revents & (POLLERR | POLLHUP)) return -1;
   if (pfds[1].revents & POLLIN) nd_input_repeat_tick(app);
   if (pfds[2].revents & POLLIN) nd_app_watch_drain(app);
+  if (pfds[3].revents & POLLIN) nd_app_chooser_ready(app);
 
   nd_app_tick(app);
   return 0;

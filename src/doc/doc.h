@@ -94,6 +94,16 @@ bool    nd_doc_reload(nd_doc *d, char **err);
  * invalidates every borrowed pointer. */
 bool    nd_doc_load(nd_doc *d, const char *path, char **err);
 
+/* Same, but for a path the USER chose -- an Open dialog, not a link in a
+ * document. It re-homes the containment root to the new file's directory.
+ *
+ * The distinction is the whole point. A path a document names must never widen
+ * the root, or one hop through a wikilink hands the next document the whole
+ * filesystem. A path a person picked in a file dialog IS the new intent, and
+ * confining it to wherever the last document happened to live would mean the
+ * images of the file they just opened silently fail to load. */
+bool    nd_doc_open_chosen(nd_doc *d, const char *path, char **err);
+
 const char *nd_doc_path(const nd_doc *d);
 void    nd_doc_free(nd_doc *d);
 

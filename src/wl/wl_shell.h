@@ -35,6 +35,7 @@ struct nd_wl {
   /* Bound versions, kept because a request that postdates the bound version is
    * a fatal protocol error rather than a no-op. */
   uint32_t compositor_version;
+  uint32_t seat_version;
 
   struct nd_app *app; /* back-pointer for listeners */
 };

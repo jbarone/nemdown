@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- nemdown's icon.
+       A page with its corner turned, carrying the two marks that say
+       "markdown" without spelling it: a heading rule and the down-chevron of
+       the markdown mark. Catppuccin Mocha, teal accent, matching the app.
+
+       Drawn on a 64 grid with nothing thinner than 2 units, so it survives
+       being scaled to a 16px tray slot. The usual failure of an app icon is
+       detail that turns to mush at the size a launcher actually uses. -->
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#45475a"/>
+      <stop offset="1" stop-color="#313244"/>
+    </linearGradient>
+  </defs>
+
+  <!-- the page, corner folded at the top right -->
+  <path d="M12 6h26l14 14v38a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4V10a4 4 0 0 1 4-4z"
+        fill="url(#page)" stroke="#585b70" stroke-width="2"
+        stroke-linejoin="round"/>
+  <!-- the fold itself, lit so the corner reads as turned rather than cut -->
+  <path d="M38 6l14 14H42a4 4 0 0 1-4-4z" fill="#6c7086"/>
+
+  <!-- heading rule: the one line that says "this is a document" -->
+  <rect x="17" y="28" width="22" height="4" rx="2" fill="#94e2d5"/>
+
+  <!-- body lines, dimmer, unequal lengths so they read as prose. They stop
+       short of the chevron: overlapping them turned the whole lower half into
+       one smudge below about 32px. -->
+  <rect x="17" y="38" width="17" height="3" rx="1.5" fill="#7f849c"/>
+  <rect x="17" y="45" width="11" height="3" rx="1.5" fill="#7f849c"/>
+
+  <!-- the markdown down-chevron. Large and clear of everything else, because
+       at launcher sizes this and the teal rule are the only two things that
+       still survive. -->
+  <path d="M38 37l7 9 7-9" fill="none" stroke="#94e2d5" stroke-width="5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -10,6 +10,7 @@
 
 #include "doc/doc.h"
 #include "ui/sidebar.h"
+#include "ui/filechooser.h"
 #include "wl/wl_input.h"
 #include "wl/wl_shell.h"
 #include "wl/wl_window.h"
@@ -88,6 +89,8 @@ struct nd_app {
 
   /* Reading guide: a thin marker beside the stop being read. Kept here rather
    * than in the engine because it is a view of input state, like hover. */
+  struct nd_filechooser chooser;
+
   bool     guide_on;
   /* The cursor, and it is a cursor: authoritative, not derived from the scroll
    * offset. Deriving it meant that at the bottom of a document it pinned to
@@ -127,6 +130,9 @@ void nd_app_scroll_settle(struct nd_app *app);
 void nd_app_animate(struct nd_app *app, uint32_t time_ms);
 void nd_app_tick(struct nd_app *app);
 void nd_app_watch_drain(struct nd_app *app);
+
+/* The Open dialog answered: load what was chosen, or carry on if cancelled. */
+void nd_app_chooser_ready(struct nd_app *app);
 void nd_app_quit(struct nd_app *app);
 
 bool nd_app_is_dirty(const struct nd_app *app);

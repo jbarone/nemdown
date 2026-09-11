@@ -22,6 +22,7 @@ src/main.c        argv and usage
 src/app.c         app state, scrolling, dirty flags, action dispatch
 src/wl/           the Wayland shell: connection, window, buffers, input
 src/ui/           theme, typography, sidebar — the chrome around the document
+src/ui/filechooser.c  the desktop's Open dialog, via xdg-desktop-portal
 src/doc/          the document engine; doc.h is the ONLY header the shell uses
 test/             headless harnesses, assertion checks, fixtures; no compositor
 tools/            lsan.supp, valgrind.supp
@@ -186,6 +187,14 @@ These were each a real bug; the comments in the code say so at the site.
   than per item — `pango_layout_index_to_line_x` and
   `pango_layout_get_line_readonly` both walk the line list from the start, so
   per-item lookup is quadratic. This was 79 seconds a frame.
+- **A path the USER chose re-homes the containment root; a path a DOCUMENT
+  names never does.** `nd_doc_open_chosen` exists for exactly that difference.
+  Confining an Open-dialog choice to the previous document's tree would make
+  its images silently fail to load; letting a wikilink widen the root would
+  hand the next document the filesystem.
+- **The file chooser runs on a worker thread and reports through a pipe**, not
+  by embedding a GMainContext in the poll loop. The prepare_read dance is the
+  most delicate thing in the program and a dialog is not worth risking it.
 - **Copying yields rendered text, not markdown source.** md4c's text callback
   carries no source offset, so the mapping does not exist.
 - **Atom classes are spacing, not bookkeeping.** The gap between two math

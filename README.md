@@ -36,6 +36,11 @@ preferred one and `otf-latinmodern-math` also works. Without either, formulas
 fall back to showing their source rather than failing. `wl-clipboard` enables
 copying. Both are `optdepends`, so neither is installed for you.
 
+It registers a launcher entry and an icon, and claims `text/markdown`, so it
+can be opened from a menu or by clicking a `.md` file. Launched with no file it
+asks for one through the desktop's own Open dialog (`xdg-desktop-portal`); `o`
+does the same from inside.
+
 `packaging/aur/nemdown` is the same package built from a tagged release rather
 than the tip; it needs a tag to exist first. Neither is on the AUR yet.
 
@@ -57,7 +62,8 @@ h / l              pan a code fence
 ### Document
 
 ```
-/                  search                     n / N     next / previous match
+o                  open a file                /         search
+                                              n / N     next / previous match
 b                  toggle the sidebar         r         reload from disk
 + / - / 0          zoom in / out / reset      Backspace back to the last note
 Ctrl-C             copy                       q         quit

@@ -494,6 +494,18 @@ void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat) {
       mark(app, ND_DIRTY_ALL);
       break;
 
+    case XKB_KEY_o: {
+      /* Start where the current document lives: opening a note almost always
+       * means opening one beside it. */
+      char *dir = strdup(nd_doc_path(app->doc));
+      char *slash = dir ? strrchr(dir, '/') : NULL;
+      if (slash) *slash = '\0';
+      if (!nd_filechooser_start(&app->chooser, slash ? dir : NULL))
+        nd_warn("no file chooser available (is xdg-desktop-portal running?)");
+      free(dir);
+      break;
+    }
+
     case XKB_KEY_f:
       app->guide_on = !app->guide_on;
       mark(app, ND_DIRTY_DOC);
@@ -1259,6 +1271,40 @@ void nd_app_paint(struct nd_app *app, cairo_t *cr, int w, int h, double scale) {
 
 /* ---- file watching ------------------------------------------------------- */
 
+void nd_app_chooser_ready(struct nd_app *app) {
+  char *path = nd_filechooser_take(&app->chooser);
+  if (!path) return;   /* cancelled, or the portal failed and said so */
+
+  /* A file the user picked is user intent, so it re-homes the containment
+   * root; a path a document names never does. navigate() is not reused here
+   * for exactly that reason -- it is the document-driven path. */
+  char *err = NULL;
+  if (!nd_doc_open_chosen(app->doc, path, &err)) {
+    nd_warn("%s", err ? err : "cannot open");
+    free(err);
+    free(path);
+    return;
+  }
+  free(err);
+
+  /* Everything doc.h handed out died with the old tree. */
+  app->sidebar.hover_toc = -1;
+  memset(&app->hover, 0, sizeof app->hover);
+  app->guide_h = 0.0;
+  app->guide_th = 0.0;
+  app->guide_anim = false;
+  app->guide_idx = 0;
+  app->guide_pinned = true;
+  app->history_n = 0;   /* a new document is a new trail, not a continuation */
+
+  app->scroll.offset = app->scroll.target = 0.0;
+  app->scroll.animating = false;
+  rewatch(app);
+  set_title(app);
+  free(path);
+  mark(app, ND_DIRTY_ALL | ND_DIRTY_RELAYOUT);
+}
+
 void nd_app_watch_drain(struct nd_app *app) {
   char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
   bool touched = false;
@@ -1288,6 +1334,8 @@ bool nd_app_init(struct nd_app *app, const char *path, char **err) {
   app->sidebar_visible = true;
   /* On by default: it is the sort of thing that only helps if it is already
    * there when you start reading. `f` turns it off. */
+  app->chooser.fd      = -1;   /* idle; poll ignores a negative fd */
+  app->chooser.wfd     = -1;
   app->guide_on        = true;
   app->guide_idx       = 0;      /* a document opens marked at its first block */
   app->guide_pinned    = true;
@@ -1364,6 +1412,9 @@ int nd_app_run(struct nd_app *app) {
 }
 
 void nd_app_finish(struct nd_app *app) {
+  /* Joins the worker if a dialog is still open, rather than leaving a thread
+   * writing into a pipe whose read end is about to go. */
+  nd_filechooser_finish(&app->chooser);
   nd_window_destroy(&app->win);
   nd_doc_free(app->doc);
   nd_input_finish(&app->input);

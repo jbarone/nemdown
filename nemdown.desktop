@@ -1,9 +1,14 @@
 [Desktop Entry]
 Type=Application
 Name=nemdown
-Comment=Native Wayland markdown viewer
+GenericName=Markdown Viewer
+Comment=Read markdown with Obsidian-style rendering and typeset maths
 Exec=nemdown %f
+Icon=nemdown
 Terminal=false
-NoDisplay=true
 MimeType=text/markdown;text/x-markdown;
-Categories=Utility;TextEditor;
+Categories=Utility;TextTools;
+Keywords=markdown;md;notes;reader;viewer;
+# Matches xdg_toplevel_set_app_id in wl_window.c, so the compositor can tie a
+# window back to this entry. They have to stay in step.
+StartupWMClass=nemdown

@@ -174,6 +174,14 @@ bool nd_doc_load(nd_doc *d, const char *path, char **err) {
   return rebuild(d, err);
 }
 
+bool nd_doc_open_chosen(nd_doc *d, const char *path, char **err) {
+  /* Dropping it makes nd_doc_load adopt the new file's directory, since it
+   * only sets the root when there is not one already. */
+  free(d->root_dir);
+  d->root_dir = NULL;
+  return nd_doc_load(d, path, err);
+}
+
 const char *nd_doc_path(const nd_doc *d) { return d->path; }
 
 double nd_doc_anchor_y(const nd_doc *d, const char *anchor) {
