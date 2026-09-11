@@ -2,11 +2,11 @@
 #
 # Tracks tagged releases. Use `nemdown-git` to build from the repository tip.
 #
-# BEFORE PUBLISHING:
-#   1. tag a release (`git tag -a v0.1.0 -m ...` and push the tag)
-#   2. run `updpkgsums` to replace the sha256 placeholder below
-# A published PKGBUILD whose checksum is still SKIP is one nobody can verify,
-# which is the whole point of shipping a checksum.
+# ON EVERY RELEASE: bump pkgver, then run `updpkgsums` and regenerate .SRCINFO.
+# The checksum can only be computed once the tag exists, because it is over the
+# tarball GitHub generates from it -- so the sum for a release always lands in
+# a commit AFTER the tag it describes. A published PKGBUILD still carrying SKIP
+# is one nobody can verify, which is the whole point of shipping a checksum.
 
 pkgname=nemdown
 pkgver=0.1.0
@@ -28,7 +28,7 @@ optdepends=('wl-clipboard: copying selected text and code fences'
             'graphviz: draw mermaid flowchart, state and class diagrams'
             'ttf-hack-nerd: the font the typography is designed around')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('038576bd7cdfff39e2c695ee9e7fbdfa98a741dfac6f81b6bc3388bcb9e56812')
 
 build() {
   cd "$pkgname-$pkgver"

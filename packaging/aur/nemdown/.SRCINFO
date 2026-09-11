@@ -26,6 +26,6 @@ pkgbase = nemdown
 	optdepends = graphviz: draw mermaid flowchart, state and class diagrams
 	optdepends = ttf-hack-nerd: the font the typography is designed around
 	source = nemdown-0.1.0.tar.gz::https://github.com/jbarone/nemdown/archive/refs/tags/v0.1.0.tar.gz
-	sha256sums = SKIP
+	sha256sums = 038576bd7cdfff39e2c695ee9e7fbdfa98a741dfac6f81b6bc3388bcb9e56812
 
 pkgname = nemdown
