@@ -126,6 +126,11 @@ bool nd_doc_toggle_task(nd_doc *d, uint32_t source_offset, bool now_checked);
  * consume the scroll event rather than passing it to the page. */
 bool nd_doc_pan_code(nd_doc *d, double x, double doc_y, double dx);
 
+/* Keyboard equivalent: pans the visible fence nearest the viewport centre.
+ * Fences that do not overflow are skipped, so h/l never appear to do nothing
+ * while a pannable block is on screen. */
+bool nd_doc_pan_focused(nd_doc *d, double scroll_y, double viewport_h, double dx);
+
 /* ---- selection ---------------------------------------------------------- */
 
 void  nd_doc_select_begin(nd_doc *d, double x, double doc_y);

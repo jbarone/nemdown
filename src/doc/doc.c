@@ -2,6 +2,7 @@
 
 #include "doc/doc.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -312,6 +313,46 @@ bool nd_doc_pan_code(nd_doc *d, double x, double doc_y, double dx) {
   if (b->lay.hscroll < 0) b->lay.hscroll = 0;
   if (b->lay.hscroll > overflow) b->lay.hscroll = overflow;
   return b->lay.hscroll != before;
+}
+
+/* Overflow in logical px, or 0 when the fence fits. */
+static double code_overflow(const nd_block *b) {
+  double visible = b->lay.w - 2 * 16.0; /* panel padding, see layout.c */
+  double over = b->lay.natural_w - visible;
+  return over > 0 ? over : 0;
+}
+
+static void find_pannable(nd_block *b, double y0, double y1, double centre,
+                          nd_block **best, double *best_dist) {
+  if (b->kind == ND_CODE) {
+    /* Must be at least partly on screen and actually have somewhere to go. */
+    if (b->lay.y < y1 && b->lay.y + b->lay.h > y0 && code_overflow(b) > 0) {
+      double mid = b->lay.y + b->lay.h / 2.0;
+      double dist = fabs(mid - centre);
+      if (!*best || dist < *best_dist) { *best = b; *best_dist = dist; }
+    }
+    return;
+  }
+  for (uint32_t i = 0; i < b->nkids; i++)
+    find_pannable(b->kids[i], y0, y1, centre, best, best_dist);
+}
+
+bool nd_doc_pan_focused(nd_doc *d, double scroll_y, double viewport_h,
+                        double dx) {
+  if (!d->laid_out) return false;
+
+  nd_block *best = NULL;
+  double dist = 0;
+  find_pannable(d->root, scroll_y, scroll_y + viewport_h,
+                scroll_y + viewport_h / 2.0, &best, &dist);
+  if (!best) return false;
+
+  double over = code_overflow(best);
+  double before = best->lay.hscroll;
+  best->lay.hscroll += dx;
+  if (best->lay.hscroll < 0) best->lay.hscroll = 0;
+  if (best->lay.hscroll > over) best->lay.hscroll = over;
+  return best->lay.hscroll != before;
 }
 
 bool nd_doc_hit_test(nd_doc *d, double x, double doc_y, nd_hit *out) {

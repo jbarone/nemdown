@@ -39,6 +39,9 @@
 /* How long the copy button shows a tick instead of its usual glyph. */
 #define ND_COPIED_MS    900
 
+/* One h/l step. Roughly three monospace characters at the default size. */
+#define ND_PAN_STEP     36.0
+
 /* Monotonic milliseconds, matching the units the frame callback reports. */
 static uint32_t nd_now_ms(void) {
   struct timespec ts;
@@ -313,6 +316,15 @@ void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat) {
     case XKB_KEY_r:
       reload_document(app);
       break;
+
+    case XKB_KEY_h:
+    case XKB_KEY_l: {
+      double dx = (sym == XKB_KEY_l ? 1.0 : -1.0) * ND_PAN_STEP * app->font_scale;
+      if (nd_doc_pan_focused(app->doc, app->scroll.offset,
+                             (double)app->win.h, dx))
+        mark(app, ND_DIRTY_DOC);
+      break;
+    }
 
     case XKB_KEY_slash:
       app->searching = true;
