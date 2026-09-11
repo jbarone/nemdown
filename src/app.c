@@ -57,6 +57,7 @@ static void scroll_clamp(struct nd_app *app);
 static void sidebar_animate(struct nd_app *app, uint32_t time_ms);
 static void reload_document(struct nd_app *app);
 static void copy_to_clipboard(const char *text);
+static void navigate_back(struct nd_app *app);
 
 static void mark(struct nd_app *app, unsigned bits) {
   app->dirty |= bits;
@@ -384,6 +385,10 @@ void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat) {
       reload_document(app);
       break;
 
+    case XKB_KEY_BackSpace:
+      navigate_back(app);
+      break;
+
     case XKB_KEY_h:
     case XKB_KEY_l: {
       double dx = (sym == XKB_KEY_l ? 1.0 : -1.0) * ND_PAN_STEP * app->font_scale;
@@ -434,6 +439,100 @@ void nd_app_zoom(struct nd_app *app, double scale) {
   app->scroll.target = app->scroll.offset;
 
   mark(app, ND_DIRTY_ALL | ND_DIRTY_RELAYOUT);
+}
+
+/* Re-points the inotify watch at whichever directory the document now lives
+ * in, so live reload follows navigation. */
+static void rewatch(struct nd_app *app) {
+  if (app->watch_fd < 0) return;
+  if (app->watch_wd >= 0) inotify_rm_watch(app->watch_fd, app->watch_wd);
+
+  char *dup = strdup(nd_doc_path(app->doc));
+  if (!dup) return;
+  char *dirc = strdup(dup);
+  app->watch_wd = inotify_add_watch(app->watch_fd, dirname(dirc),
+                                    IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE);
+  free(dirc);
+
+  free(app->base_name);
+  char *basec = strdup(dup);
+  app->base_name = strdup(basename(basec));
+  free(basec);
+  free(dup);
+}
+
+static void set_title(struct nd_app *app) {
+  char *dup = strdup(nd_doc_path(app->doc));
+  char title[512];
+  snprintf(title, sizeof title, "nemdown — %s", dup ? basename(dup) : "");
+  free(dup);
+  if (app->win.toplevel) xdg_toplevel_set_title(app->win.toplevel, title);
+}
+
+/* Loads a different document. `anchor` is an optional heading slug to land on.
+ * Pushing the current path lets Backspace walk back out. */
+static void navigate(struct nd_app *app, const char *path, const char *anchor,
+                     bool push_history) {
+  char *err = NULL;
+
+  if (push_history && app->history_n < (int)(sizeof app->history / sizeof app->history[0])) {
+    app->history[app->history_n] = strdup(nd_doc_path(app->doc));
+    app->history_scroll[app->history_n] = app->scroll.offset;
+    app->history_n++;
+  }
+
+  if (!nd_doc_load(app->doc, path, &err)) {
+    nd_warn("%s", err ? err : "cannot open");
+    free(err);
+    if (push_history && app->history_n > 0) {
+      /* The push was speculative; undo it rather than leaving a dead entry. */
+      app->history_n--;
+      free(app->history[app->history_n]);
+      app->history[app->history_n] = NULL;
+    }
+    return;
+  }
+
+  /* Every borrowed pointer died with the old tree. */
+  app->sidebar.hover_toc = -1;
+  app->sidebar.toc_scroll = 0;
+  app->sidebar.props_scroll = 0;
+  app->hover.kind = ND_HIT_NONE;
+  app->hover.url = NULL;
+  nd_doc_search_clear(app->doc);
+  app->searching = false;
+  app->query_len = 0;
+
+  double sidebar = app->sidebar_visible ? app->sidebar_w : 0.0;
+  nd_doc_layout(app->doc, (double)app->win.w - sidebar, app->font_scale);
+
+  double y = 0.0;
+  if (anchor) {
+    double ay = nd_doc_anchor_y(app->doc, anchor);
+    if (ay >= 0) y = ay - 16.0;
+  }
+  if (y < 0) y = 0;
+  app->scroll.offset = app->scroll.target = y;
+  app->scroll.animating = false;
+
+  set_title(app);
+  rewatch(app);
+  mark(app, ND_DIRTY_ALL | ND_DIRTY_RELAYOUT);
+}
+
+static void navigate_back(struct nd_app *app) {
+  if (app->history_n <= 0) return;
+
+  app->history_n--;
+  char *path = app->history[app->history_n];
+  double y = app->history_scroll[app->history_n];
+  app->history[app->history_n] = NULL;
+
+  navigate(app, path, NULL, false);
+  /* Restore where the reader was, not the top of the file. */
+  app->scroll.offset = app->scroll.target = y;
+  free(path);
+  mark(app, ND_DIRTY_ALL);
 }
 
 /* Reloads from disk, holding the reader's place. */
@@ -680,9 +779,19 @@ void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed,
       mark(app, ND_DIRTY_ALL | ND_DIRTY_RELAYOUT);
       break;
 
-    case ND_HIT_WIKILINK:
-      /* Single-file viewer: styled as a link, but there is nowhere to go. */
+    case ND_HIT_WIKILINK: {
+      /* The engine resolved this to a real path, and appended #anchor if the
+       * link had one. Unresolved wikilinks never produce a hit at all. */
+      if (!hit.url) break;
+      char *dup = strdup(hit.url);
+      if (!dup) break;
+      char *hash = strrchr(dup, '#');
+      const char *anchor = NULL;
+      if (hash) { *hash = '\0'; anchor = hash + 1; }
+      navigate(app, dup, anchor, true);
+      free(dup);
       break;
+    }
 
     default:
       break;
@@ -973,6 +1082,7 @@ void nd_app_finish(struct nd_app *app) {
   nd_input_finish(&app->input);
   nd_wl_disconnect(&app->wl);
   if (app->watch_fd >= 0) close(app->watch_fd);
+  for (int i = 0; i < app->history_n; i++) free(app->history[i]);
   free(app->base_name);
   free(app->path);
 }

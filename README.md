@@ -16,14 +16,15 @@ teal accent, no theme switcher.
 
 ```
 j / k / arrows     scroll a line       g / G          top / bottom
-h / l              pan a code fence
+h / l              pan a code fence    Backspace      back
 Ctrl-d / Ctrl-u    half page           PgUp / PgDn    page
 / then n / N       search, next/prev   b              toggle the sidebar
 + / - / 0          zoom in/out/reset   r              reload
 Ctrl-C             copy                q / Esc        quit
 ```
 
-Clicking a contents entry scrolls to that heading. Clicking a link opens it;
+Clicking a contents entry scrolls to that heading. Clicking a `[[wikilink]]`
+opens that note — `Backspace` goes back. Clicking a link opens it;
 clicking a task checkbox toggles it **in the file**. Callouts fold and unfold
 from the chevron in their title row. Hovering a code fence
 reveals a copy button in its top-right corner. Code does not wrap. Pan an overflowing fence
@@ -55,8 +56,9 @@ Dependencies, all from the Arch repos: `wayland` `wayland-protocols` `cairo`
 ## Rendering
 
 Aims at Obsidian's reading view. Supported: headings, emphasis and nesting,
-inline and fenced code with syntax highlighting, `==highlights==`, links and
-`[[wikilinks]]`, nested and ordered lists, task checkboxes, blockquotes,
+inline and fenced code with syntax highlighting, `==highlights==`, links and `[[wikilinks]]`
+(including `[[note|shown as this]]` and `[[note#heading]]`), nested and ordered
+lists, task checkboxes, blockquotes,
 Obsidian callouts (`> [!warning] Title`), tables with alignment, horizontal
 rules, YAML frontmatter, and `$math$` styled but not typeset — display `$$math$$` gets its own labelled
 panel. Images carry their alt text as a caption.
@@ -65,8 +67,12 @@ Images are decoded (PNG/JPEG/GIF/BMP/TIFF via gdk-pixbuf, SVG via librsvg),
 including Obsidian's `![[img.png|400]]` size hints. Missing, unreadable and
 remote images draw a placeholder — nothing is fetched over the network.
 
-Not yet: LaTeX typesetting, footnotes, mermaid, cross-file wikilink navigation,
-WebP.
+Wikilinks resolve next to the document that mentions them — `[[note]]` finds
+`note.md` in the same directory. This is not a vault index: there is no
+directory walk, and a link that does not resolve is rendered muted and is not
+clickable.
+
+Not yet: LaTeX typesetting, footnotes, mermaid, a vault browser, WebP.
 
 ## Development tools
 

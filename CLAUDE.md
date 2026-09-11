@@ -94,5 +94,7 @@ These were each a real bug; the comments in the code say so at the site.
 - **gdk-pixbuf has no Cairo bridge** — the premultiplied ARGB32 conversion in
   `images.c` is hand-written because `gdk_cairo_surface_create_from_pixbuf`
   lives in GTK.
+- **Wikilink anchors arrive as written (`#Some Heading`) but slugs are
+  normalised**, so `nd_doc_anchor_y` slugifies its argument before matching.
 - **Copying yields rendered text, not markdown source.** md4c's text callback
   carries no source offset, so the mapping does not exist.

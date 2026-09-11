@@ -43,6 +43,13 @@ struct nd_app {
   char    *path;
   char    *base_name; /* inotify watches the directory, so events need filtering */
   uint32_t reload_at_ms; /* debounce deadline: one save emits several events */
+
+  /* Wikilink navigation. A plain stack, not a browser history: there is no
+   * forward, because there is nowhere to go forward to that re-clicking the
+   * link would not reach. */
+  char   *history[32];
+  double  history_scroll[32];
+  int     history_n;
   nd_doc  *doc;
   int   watch_fd;
   int   watch_wd;

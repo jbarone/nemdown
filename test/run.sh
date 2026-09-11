@@ -10,7 +10,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 fail=0
-for f in test/fixtures/*.md; do
+for f in $(find test/fixtures -name "*.md" | sort); do
   printf '%-40s' "$f"
   if out=$(./build/dump_tree "$f" 2>&1); then
     blocks=$(printf '%s\n' "$out" | grep -cE '^\s*(PARA|H |H level|LIST|CODE|TABLE|QUOTE)' || true)

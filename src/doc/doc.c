@@ -19,10 +19,12 @@
 #include "doc/postprocess.h"
 #include "doc/preprocess.h"
 #include "doc/toc.h"
+#include "doc/wikilink.h"
 #include "util/log.h"
 
 struct nd_doc {
   char *path;
+  char *dir;       /* the document's directory: wikilinks resolve against it */
   char *raw;       /* the whole file, as read */
   size_t raw_len;
 
@@ -88,6 +90,7 @@ static bool rebuild(nd_doc *d, char **err) {
 
   nd_frontmatter_parse(&d->arena, d->src.yaml, d->src.yaml_len, &d->props);
   nd_postprocess(&d->arena, d->root);
+  nd_wikilink_resolve_tree(&d->arena, d->root, d->dir);
   nd_toc_build(&d->arena, d->root, &d->toc_store, &d->toc);
   d->title = nd_toc_document_title(&d->arena, d->root, d->path);
   return true;
@@ -97,24 +100,62 @@ nd_doc *nd_doc_open(const char *path, char **err) {
   nd_doc *d = calloc(1, sizeof *d);
   if (!d) { *err = nd_strdup_fmt("out of memory"); return NULL; }
 
-  d->path = strdup(path);
-
-  /* Relative image paths resolve against the document's own directory. */
-  char *dup = strdup(path);
-  char *slash = strrchr(dup, '/');
-  if (slash) *slash = '\0';
-  d->images = nd_images_new(slash ? dup : ".");
-  free(dup);
-
   nd_arena_init(&d->arena);
   d->pctx = nd_pango_context_new();
   d->last_font_scale = 1.0;
 
-  d->raw = read_file(path, &d->raw_len, err);
-  if (!d->raw) { nd_doc_free(d); return NULL; }
-
-  if (!rebuild(d, err)) { nd_doc_free(d); return NULL; }
+  if (!nd_doc_load(d, path, err)) { nd_doc_free(d); return NULL; }
   return d;
+}
+
+/* Points the document at a different file. Used by wikilink navigation, which
+ * is why it re-homes the image cache too: relative paths in the new document
+ * resolve against ITS directory, not the old one's. */
+bool nd_doc_load(nd_doc *d, const char *path, char **err) {
+  size_t len = 0;
+  char *buf = read_file(path, &len, err);
+  if (!buf) return false;
+
+  free(d->raw);
+  d->raw = buf;
+  d->raw_len = len;
+
+  free(d->path);
+  d->path = strdup(path);
+
+  free(d->dir);
+  char *dup = strdup(path);
+  char *slash = dup ? strrchr(dup, '/') : NULL;
+  if (slash) *slash = '\0';
+  d->dir = strdup((slash && dup) ? dup : ".");
+  free(dup);
+
+  nd_images_free(d->images);
+  d->images = nd_images_new(d->dir);
+
+  return rebuild(d, err);
+}
+
+const char *nd_doc_path(const nd_doc *d) { return d->path; }
+
+double nd_doc_anchor_y(const nd_doc *d, const char *anchor) {
+  if (!anchor || !*anchor) return -1.0;
+
+  /* `[[note#Some Heading]]` arrives with the heading as written, but slugs are
+   * normalised — so normalise the anchor the same way before comparing. */
+  struct nd_arena tmp;
+  nd_arena_init(&tmp);
+  char *want = nd_toc_slugify(&tmp, anchor);
+
+  double y = -1.0;
+  for (size_t i = 0; i < d->toc.count; i++) {
+    if (d->toc.items[i].slug && strcmp(d->toc.items[i].slug, want) == 0) {
+      y = d->toc.items[i].y;
+      break;
+    }
+  }
+  nd_arena_reset(&tmp);
+  return y;
 }
 
 bool nd_doc_reload(nd_doc *d, char **err) {
@@ -137,6 +178,7 @@ void nd_doc_free(nd_doc *d) {
   nd_images_free(d->images);
   if (d->pctx) g_object_unref(d->pctx);
   free(d->raw);
+  free(d->dir);
   free(d->path);
   free(d);
 }

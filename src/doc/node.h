@@ -34,6 +34,7 @@ typedef enum {
   ND_RUN_MATH      = 1u << 7,
   ND_RUN_HIGHLIGHT = 1u << 8,
   ND_RUN_MATH_DISPLAY = 1u << 9, /* $$...$$, which becomes its own block */
+  ND_RUN_WIKILINK_DEAD = 1u << 10, /* wikilink whose target does not exist */
 } nd_run_flags;
 
 typedef struct {

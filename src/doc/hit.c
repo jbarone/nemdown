@@ -60,6 +60,7 @@ static bool hit_text(nd_block *b, double x, double y, nd_hit *out) {
   for (uint32_t i = 0; i < b->inl.nruns; i++) {
     const nd_run *r = &b->inl.runs[i];
     if (!(r->flags & (ND_RUN_LINK | ND_RUN_WIKILINK))) continue;
+    if (r->flags & ND_RUN_WIKILINK_DEAD) continue;
     if ((uint32_t)index < r->start || (uint32_t)index >= r->end) continue;
     if (!best || (r->end - r->start) < (best->end - best->start)) best = r;
   }

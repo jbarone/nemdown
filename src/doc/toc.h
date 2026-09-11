@@ -24,4 +24,8 @@ void nd_toc_refresh_offsets(struct nd_toc_store *store);
 /* First H1, else the file's basename. */
 char *nd_toc_document_title(struct nd_arena *a, nd_block *root, const char *path);
 
+/* Lowercases, turns runs of non-alphanumerics into single dashes, trims. Used
+ * for heading slugs AND for normalising a `#anchor` before matching one. */
+char *nd_toc_slugify(struct nd_arena *a, const char *text);
+
 #endif /* NEMDOWN_TOC_H */

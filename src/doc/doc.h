@@ -89,7 +89,16 @@ typedef struct {
 
 nd_doc *nd_doc_open(const char *path, char **err);
 bool    nd_doc_reload(nd_doc *d, char **err);
+
+/* Swaps in a different file, reusing the Pango context. Like reload, this
+ * invalidates every borrowed pointer. */
+bool    nd_doc_load(nd_doc *d, const char *path, char **err);
+
+const char *nd_doc_path(const nd_doc *d);
 void    nd_doc_free(nd_doc *d);
+
+/* Document-space y of a heading whose slug matches, or -1. */
+double  nd_doc_anchor_y(const nd_doc *d, const char *slug);
 
 /* ---- layout and paint --------------------------------------------------- */
 

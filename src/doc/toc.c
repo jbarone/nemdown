@@ -17,7 +17,7 @@ static void collect(nd_block *b, nd_block ***vec, size_t *n, size_t *cap) {
   for (uint32_t i = 0; i < b->nkids; i++) collect(b->kids[i], vec, n, cap);
 }
 
-static char *slugify(struct nd_arena *a, const char *text) {
+char *nd_toc_slugify(struct nd_arena *a, const char *text) {
   size_t n = strlen(text);
   char *out = nd_arena_alloc(a, n + 1);
   size_t k = 0;
@@ -63,7 +63,7 @@ void nd_toc_build(struct nd_arena *a, nd_block *root,
 
     store->items[i].level = level;
     store->items[i].text  = h->inl.text ? h->inl.text : "";
-    store->items[i].slug  = slugify(a, store->items[i].text);
+    store->items[i].slug  = nd_toc_slugify(a, store->items[i].text);
     store->items[i].y     = h->lay.y;
   }
 

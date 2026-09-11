@@ -114,9 +114,19 @@ static PangoAttrList *attrs_for(const nd_inline *inl, const nd_style *st,
       attr_add(al, fg(CTP_BASE), s, e);
     }
     if (f & (ND_RUN_LINK | ND_RUN_WIKILINK)) {
-      uint32_t c = (f & ND_RUN_WIKILINK) ? CTP_LAVENDER : CTP_BLUE;
-      attr_add(al, fg(c), s, e);
-      attr_add(al, pango_attr_underline_new(PANGO_UNDERLINE_SINGLE), s, e);
+      if (f & ND_RUN_WIKILINK_DEAD) {
+        /* Present, but visibly going nowhere — the same courtesy Obsidian
+         * extends to an unresolved link. */
+        attr_add(al, fg(CTP_OVERLAY1), s, e);
+        attr_add(al, pango_attr_underline_new(PANGO_UNDERLINE_DOUBLE), s, e);
+        attr_add(al, pango_attr_underline_color_new(ND_P16R(CTP_SURFACE2),
+                                                    ND_P16G(CTP_SURFACE2),
+                                                    ND_P16B(CTP_SURFACE2)), s, e);
+      } else {
+        uint32_t c = (f & ND_RUN_WIKILINK) ? CTP_LAVENDER : CTP_BLUE;
+        attr_add(al, fg(c), s, e);
+        attr_add(al, pango_attr_underline_new(PANGO_UNDERLINE_SINGLE), s, e);
+      }
     }
     /* Innermost-looking styles last so they win. */
     if (f & ND_RUN_MATH) {
