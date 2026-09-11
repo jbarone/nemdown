@@ -11,7 +11,7 @@
 pkgname=nemdown
 pkgver=0.1.0
 pkgrel=1
-pkgdesc='Native Wayland markdown viewer with Obsidian-style rendering and typeset maths'
+pkgdesc='Native Wayland markdown viewer: Obsidian rendering, typeset maths, mermaid'
 arch=('x86_64')
 url='https://github.com/jbarone/nemdown'
 license=('MIT')
@@ -19,6 +19,9 @@ license=('MIT')
 depends=('glibc' 'wayland' 'libxkbcommon' 'cairo' 'pango' 'md4c' 'libyaml'
          'gdk-pixbuf2' 'librsvg' 'glib2' 'harfbuzz')
 makedepends=('clang' 'wayland-protocols' 'pkgconf')
+# Only for check(): check_mermaid exercises the graph dialects through graphviz,
+# and without it those cases would silently be skipped rather than tested.
+checkdepends=('graphviz')
 optdepends=('wl-clipboard: copying selected text and code fences'
             'otf-stix: typeset maths (any font with an OpenType MATH table works)'
             'otf-latinmodern-math: typeset maths, Computer Modern instead of STIX'

@@ -6,7 +6,7 @@
 pkgname=nemdown-git
 pkgver=0.r0.0000000
 pkgrel=1
-pkgdesc='Native Wayland markdown viewer with Obsidian-style rendering and typeset maths (git)'
+pkgdesc='Native Wayland markdown viewer: Obsidian rendering, typeset maths, mermaid (git)'
 arch=('x86_64')
 url='https://github.com/jbarone/nemdown'
 license=('MIT')
@@ -17,6 +17,9 @@ license=('MIT')
 depends=('glibc' 'wayland' 'libxkbcommon' 'cairo' 'pango' 'md4c' 'libyaml'
          'gdk-pixbuf2' 'librsvg' 'glib2' 'harfbuzz')
 makedepends=('git' 'clang' 'wayland-protocols' 'pkgconf')
+# Only for check(): check_mermaid exercises the graph dialects through graphviz,
+# and without it those cases would silently be skipped rather than tested.
+checkdepends=('graphviz')
 optdepends=('wl-clipboard: copying selected text and code fences'
             'otf-stix: typeset maths (any font with an OpenType MATH table works)'
             'otf-latinmodern-math: typeset maths, Computer Modern instead of STIX'
@@ -52,7 +55,7 @@ build() {
 
 check() {
   cd "$pkgname"
-  # Headless: no compositor is involved. Runs the two assertion harnesses,
+  # Headless: no compositor is involved. Runs the three assertion harnesses,
   # which fail the build, then parses every fixture.
   make test
 }

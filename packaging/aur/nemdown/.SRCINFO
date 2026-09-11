@@ -1,10 +1,11 @@
 pkgbase = nemdown
-	pkgdesc = Native Wayland markdown viewer with Obsidian-style rendering and typeset maths
+	pkgdesc = Native Wayland markdown viewer: Obsidian rendering, typeset maths, mermaid
 	pkgver = 0.1.0
 	pkgrel = 1
 	url = https://github.com/jbarone/nemdown
 	arch = x86_64
 	license = MIT
+	checkdepends = graphviz
 	makedepends = clang
 	makedepends = wayland-protocols
 	makedepends = pkgconf
