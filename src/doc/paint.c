@@ -82,10 +82,12 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
         cairo_move_to(cr, b->lay.x + ND_CODE_PAD_X, b->lay.y + 6.0);
         /* Drawn with the toy API only for this tiny label; everything else
          * goes through Pango. */
+        const nd_style *ls = &nd_styles[ND_ST_CODE_LABEL];
         cairo_select_font_face(cr, ND_MONO, CAIRO_FONT_SLANT_NORMAL,
                                CAIRO_FONT_WEIGHT_NORMAL);
-        cairo_set_font_size(cr, 11.0);
-        cairo_move_to(cr, b->lay.x + ND_CODE_PAD_X, b->lay.y + 17.0);
+        cairo_set_font_size(cr, ls->size);
+        cairo_move_to(cr, b->lay.x + ND_CODE_PAD_X,
+                      b->lay.y + 6.0 + ls->size);
         cairo_show_text(cr, b->code_lang);
       }
 
