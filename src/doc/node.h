@@ -14,8 +14,9 @@
 #include <stdint.h>
 
 typedef enum {
-  ND_DOC_ROOT, ND_PARA, ND_HEADING, ND_CODE, ND_MATH_BLOCK, ND_QUOTE,
-  ND_CALLOUT, ND_LIST, ND_ITEM, ND_HR, ND_TABLE, ND_ROW, ND_CELL, ND_IMAGE
+  ND_DOC_ROOT, ND_PARA, ND_HEADING, ND_CODE, ND_MERMAID, ND_MATH_BLOCK,
+  ND_QUOTE, ND_CALLOUT, ND_LIST, ND_ITEM, ND_HR, ND_TABLE, ND_ROW, ND_CELL,
+  ND_IMAGE
 } nd_block_kind;
 
 /* Inline style flags. Runs deliberately OVERLAP rather than being flattened
@@ -55,6 +56,8 @@ typedef struct {
   uint32_t first_break;
 } nd_inline;
 
+struct nd_mermaid;
+
 /* Per-block layout results, recomputed when the column width changes. */
 typedef struct {
   double x, y, w, h;
@@ -70,6 +73,10 @@ typedef struct {
    * for when it is NULL. */
   struct nd_box *math;
   double  math_w, math_h, math_d;
+  /* A rendered mermaid diagram, or NULL when the fence could not be drawn and
+   * shows its source instead. Owns GObjects, so like PangoLayout it lives
+   * outside the arena and dies in nd_layout_free_tree. */
+  struct nd_mermaid *mer;
 } nd_layout;
 
 typedef struct nd_block nd_block;
@@ -103,14 +110,30 @@ struct nd_block {
 
 /* Code fences keep their contents in code_text rather than inl, because they
  * carry no inline runs. Anything walking blocks for TEXT — selection, search —
- * must go through here or fences silently drop out of it. */
+ * must go through here or fences silently drop out of it.
+ *
+ * A mermaid fence that DREW has no text on screen, so it offers none: search
+ * would otherwise highlight bands of a picture, and selection would copy a
+ * diagram source nobody can see. One that fell back to its source is an
+ * ordinary fence and behaves like one. */
 static inline const char *nd_block_text(const nd_block *b, uint32_t *len) {
-  if (b->kind == ND_CODE) {
+  if (b->kind == ND_MERMAID && b->lay.mer) {
+    *len = 0;
+    return "";
+  }
+  if (b->kind == ND_CODE || b->kind == ND_MERMAID) {
     *len = b->code_len;
     return b->code_text;
   }
   *len = b->inl.len;
   return b->inl.text;
+}
+
+/* A mermaid fence that could not be drawn IS a code panel — it has the copy
+ * button, the horizontal pan and the language label, because that is literally
+ * what is on screen. One that drew has none of them. */
+static inline bool nd_block_is_code_panel(const nd_block *b) {
+  return b->kind == ND_CODE || (b->kind == ND_MERMAID && !b->lay.mer);
 }
 
 #endif /* NEMDOWN_NODE_H */

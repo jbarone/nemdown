@@ -380,7 +380,7 @@ double nd_doc_y_for_anchor(const nd_doc *d, uint64_t anchor) {
 
 /* Finds the code fence containing a point, if any. */
 static nd_block *code_at(nd_block *b, double x, double doc_y) {
-  if (b->kind == ND_CODE) {
+  if (nd_block_is_code_panel(b)) {
     if (x >= b->lay.x && x <= b->lay.x + b->lay.w &&
         doc_y >= b->lay.y && doc_y <= b->lay.y + b->lay.h)
       return b;
@@ -422,7 +422,7 @@ static double code_overflow(const nd_block *b) {
 
 static void find_pannable(nd_block *b, double y0, double y1, double centre,
                           nd_block **best, double *best_dist) {
-  if (b->kind == ND_CODE) {
+  if (nd_block_is_code_panel(b)) {
     /* Must be at least partly on screen and actually have somewhere to go. */
     if (b->lay.y < y1 && b->lay.y + b->lay.h > y0 && code_overflow(b) > 0) {
       double mid = b->lay.y + b->lay.h / 2.0;

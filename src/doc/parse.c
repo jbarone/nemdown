@@ -8,6 +8,8 @@
 
 #include "doc/parse.h"
 
+#include "doc/mermaid.h"
+
 #include <md4c.h>
 #include <stdlib.h>
 #include <string.h>
@@ -272,6 +274,10 @@ static int enter_block(MD_BLOCKTYPE type, void *detail, void *ud) {
       MD_BLOCK_CODE_DETAIL *d = detail;
       nd_block *n = node_new(b, ND_CODE);
       n->code_lang = attr_dup(b, &d->lang);
+      /* A mermaid fence is still a fence — same text, same offsets — and only
+       * differs in what layout does with it. If the diagram cannot be built it
+       * falls back to being drawn as exactly this. */
+      if (nd_mermaid_is_fence(n->code_lang)) n->kind = ND_MERMAID;
       push(b, n);
       b->leaf = n;
       inl_begin(b);

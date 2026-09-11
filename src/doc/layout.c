@@ -3,6 +3,7 @@
 #include "doc/layout.h"
 
 #include "doc/math.h"
+#include "doc/mermaid.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -29,6 +30,7 @@
 #define ND_CALLOUT_ICON  26.0
 #define ND_IMG_MAX_H    600.0
 #define ND_IMG_FAIL_H    96.0
+#define ND_MERMAID_PAD    8.0
 #define ND_MATH_PAD_X    16.0
 #define ND_MATH_PAD_Y    12.0
 
@@ -268,7 +270,8 @@ static double layout_children(struct nd_layout_ctx *ctx, nd_block *b,
 
     switch (k->kind) {
       case ND_HEADING: st = nd_heading_style(k->level); break;
-      case ND_CODE:    st = &nd_styles[ND_ST_CODE];     break;
+      case ND_CODE:
+      case ND_MERMAID: st = &nd_styles[ND_ST_CODE];     break;
       case ND_QUOTE:   st = &nd_styles[ND_ST_QUOTE];    break;
       default: break;
     }
@@ -312,6 +315,25 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
       if (b->nkids) y = layout_children(ctx, b, x, y, w);
       break;
     }
+
+    case ND_MERMAID: {
+      /* Rebuilt on every relayout rather than kept across one, exactly as the
+       * maths boxes are: graphviz costs well under a millisecond per diagram,
+       * and a second object lifetime to reason about is not worth saving it. */
+      nd_mermaid_free(b->lay.mer);
+      b->lay.mer = ctx->pctx
+          ? nd_mermaid_build(ctx->pctx, b->code_text, b->code_len, w,
+                             ctx->font_scale)
+          : NULL;
+      if (b->lay.mer) {
+        nd_mermaid_size(b->lay.mer, &b->lay.img_w, &b->lay.img_h);
+        b->lay.h = b->lay.img_h + 2 * ND_MERMAID_PAD;
+        y += b->lay.h;
+        break;
+      }
+      /* No diagram: it is an ordinary fenced block showing its own source. */
+    }
+    __attribute__((fallthrough));
 
     case ND_CODE: {
       const nd_style *st = &nd_styles[ND_ST_CODE];
@@ -651,5 +673,6 @@ void nd_layout_free_tree(nd_block *root) {
   if (root->lay.marker) { g_object_unref(root->lay.marker); root->lay.marker = NULL; }
   free(root->lay.colw); root->lay.colw = NULL;
   free(root->lay.rowy); root->lay.rowy = NULL;
+  nd_mermaid_free(root->lay.mer); root->lay.mer = NULL;
   for (uint32_t i = 0; i < root->nkids; i++) nd_layout_free_tree(root->kids[i]);
 }

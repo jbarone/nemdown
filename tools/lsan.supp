@@ -13,3 +13,13 @@ leak:libfreetype
 leak:libharfbuzz
 leak:libcairo
 leak:libgio-2.0
+
+# graphviz leaks the virtual edges it builds for CLUSTER layout: make_chain
+# allocates them and gvFreeLayout does not free them. Reproduced against
+# graphviz 16.1.0 with a flowchart containing a `subgraph`, and confirmed
+# absent without one — so it is per-layout, not a process-lifetime cache, and
+# a document with subgraphs loses roughly a kilobyte per relayout. That is
+# graphviz's bug and there is nothing to free from this side; it is suppressed
+# only so it does not bury our own findings. Narrow on purpose: the function,
+# not the whole library, so any OTHER graphviz leak still reports.
+leak:new_virtual_edge

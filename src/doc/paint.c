@@ -3,6 +3,7 @@
 #include "doc/paint.h"
 
 #include "doc/math.h"
+#include "doc/mermaid.h"
 
 #include <pango/pangocairo.h>
 
@@ -13,6 +14,7 @@
 
 #define ND_CODE_PAD_X   16.0
 #define ND_CODE_PAD_Y   14.0
+#define ND_MERMAID_PAD   8.0
 #define ND_QUOTE_BAR     3.0
 #define ND_RADIUS        8.0
 
@@ -74,6 +76,18 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
       break;
     }
 
+    case ND_MERMAID: {
+      if (b->lay.mer) {
+        /* Centred in the column and drawn straight onto the page: a diagram
+         * is a figure, not a listing, so it gets no panel behind it. */
+        nd_mermaid_paint(b->lay.mer, cr,
+                         b->lay.x + (b->lay.w - b->lay.img_w) / 2.0,
+                         b->lay.y + ND_MERMAID_PAD);
+        break;
+      }
+    }
+    __attribute__((fallthrough));
+
     case ND_CODE: {
       double pad_top = b->code_lang ? ND_CODE_PAD_Y + 16.0 : ND_CODE_PAD_Y;
 
@@ -84,7 +98,15 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
       cairo_set_line_width(cr, 1.0);
       cairo_stroke(cr);
 
-      if (b->code_lang && *b->code_lang) {
+      /* A mermaid fence only reaches here having failed to draw, and the
+       * commonest reason by far is that graphviz is not installed. Saying so
+       * on the label turns "why is this showing me source?" into an answer. */
+      const char *lang = b->code_lang;
+      if (b->kind == ND_MERMAID)
+        lang = nd_mermaid_have_graphviz() ? "mermaid"
+                                          : "mermaid (needs graphviz)";
+
+      if (lang && *lang) {
         nd_src(cr, CTP_OVERLAY0);
         cairo_move_to(cr, b->lay.x + ND_CODE_PAD_X, b->lay.y + 6.0);
         /* Drawn with the toy API only for this tiny label; everything else
@@ -95,7 +117,7 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
         cairo_set_font_size(cr, ls->size);
         cairo_move_to(cr, b->lay.x + ND_CODE_PAD_X,
                       b->lay.y + 6.0 + ls->size);
-        cairo_show_text(cr, b->code_lang);
+        cairo_show_text(cr, lang);
       }
 
       if (b->lay.pl) {

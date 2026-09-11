@@ -21,6 +21,7 @@ static const char *kind_name(nd_block_kind k) {
     case ND_PARA:       return "PARA";
     case ND_HEADING:    return "H";
     case ND_CODE:       return "CODE";
+    case ND_MERMAID:    return "MERMAID";
     case ND_MATH_BLOCK: return "MATH";
     case ND_QUOTE:      return "QUOTE";
     case ND_CALLOUT:    return "CALLOUT";

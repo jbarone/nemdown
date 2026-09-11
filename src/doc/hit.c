@@ -94,7 +94,7 @@ static void copy_button_rect(const nd_block *b, double *bx, double *by) {
 }
 
 static bool hit_code(nd_block *b, double x, double y, nd_hit *out) {
-  if (b->kind != ND_CODE) return false;
+  if (!nd_block_is_code_panel(b)) return false;
   if (x < b->lay.x || x > b->lay.x + b->lay.w) return false;
   if (y < b->lay.y || y > b->lay.y + b->lay.h) return false;
 
@@ -136,7 +136,7 @@ static bool hit_fold(nd_block *b, double x, double y, nd_hit *out) {
 }
 
 static bool hit_block(nd_block *b, double x, double y, nd_hit *out) {
-  if (b->kind == ND_CODE) return hit_code(b, x, y, out);
+  if (nd_block_is_code_panel(b)) return hit_code(b, x, y, out);
   if (b->kind == ND_CALLOUT && hit_fold(b, x, y, out)) return true;
 
   if (b->kind == ND_ITEM && hit_checkbox(b, x, y, out)) return true;

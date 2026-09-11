@@ -288,3 +288,9 @@
    ...
    obj:*/ld-linux-x86-64.so*
 }
+{
+   graphviz-cluster-virtual-edges-Leak
+   Memcheck:Leak
+   ...
+   obj:*/libgvplugin_dot_layout.so*
+}
