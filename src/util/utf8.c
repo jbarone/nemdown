@@ -25,9 +25,10 @@ size_t nd_utf8_scrub(char *buf, size_t len) {
       buf[i++] = '?'; replaced++; continue;
     }
 
-    /* Truncated at the end of the buffer: this is the exact shape that hangs
-     * Pango, so it must not survive. */
-    if (i + need >= len + 1 || i + need > len - 1) {
+    /* The continuation bytes occupy i+1 through i+need, so the sequence fits
+     * only while i + need < len. Falling off the end is the exact shape that
+     * hangs Pango, so it must not survive. */
+    if (i + need >= len) {
       buf[i++] = '?'; replaced++; continue;
     }
 

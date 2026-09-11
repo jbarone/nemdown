@@ -128,7 +128,21 @@ build/render_app: test/render_app.c $(ENGINE_SRC) src/ui/sidebar.c
 	@mkdir -p build
 	$(CC) $(STD) $(WARN) -O0 -g -Isrc $(PKG_CFLAGS) -o $@ $^ $(PKG_LIBS)
 
-tools: build/dump_md4c build/dump_tree build/render_png build/render_app
+# Brute-force sweeps over the two functions with the least margin for error:
+# the UTF-8 scrub that keeps Pango from hanging, and the containment check
+# that keeps a document from naming a path outside its own tree. Built at -O2
+# unlike the dumpers, because check_utf8 walks tens of millions of inputs and
+# -O0 turns a two-second test into one nobody runs.
+build/check_utf8: test/check_utf8.c src/util/utf8.c
+	@mkdir -p build
+	$(CC) $(STD) $(WARN) -O2 -g -Isrc $(PKG_CFLAGS) -o $@ $^ $(PKG_LIBS)
+
+build/check_pathguard: test/check_pathguard.c src/doc/pathguard.c
+	@mkdir -p build
+	$(CC) $(STD) $(WARN) -O2 -g -Isrc $(PKG_CFLAGS) -o $@ $^ $(PKG_LIBS)
+
+tools: build/dump_md4c build/dump_tree build/render_png build/render_app \
+       build/check_utf8 build/check_pathguard
 
 test: tools
 	@bash test/run.sh
