@@ -24,6 +24,7 @@ src/wl/           the Wayland shell: connection, window, buffers, input
 src/ui/           theme, typography, sidebar — the chrome around the document
 src/ui/filechooser.c  the desktop's Open dialog, via xdg-desktop-portal
 src/doc/          the document engine; doc.h is the ONLY header the shell uses
+src/doc/mermaid*.c    mermaid diagrams; graphviz for graphs, by hand for sequences
 test/             headless harnesses, assertion checks, fixtures; no compositor
 tools/            lsan.supp, valgrind.supp
 ```
@@ -60,6 +61,33 @@ Math (`otf-latinmodern-math`, extra) and several others are accepted, and with
 none installed math falls back to the styled-source panel it used to be. **Never
 hard-code a measurement here** — read it from the face. STIX reports 70%/55%
 script scaling where Noto reports 60%/50%.
+
+## Mermaid
+
+A ```` ```mermaid ```` fence is drawn, for four dialects. The split between the
+two renderers is not arbitrary. `flowchart`, `stateDiagram-v2` and
+`classDiagram` are GRAPHS — nodes and edges with no inherent geometry, so
+something has to solve a layout — and that something is graphviz:
+`mermaid_dot.c` translates each dialect to themed dot, `mermaid_gv.c` lays it
+out and rasterises it. `sequenceDiagram` is not a graph at all: its columns and
+rows are decided by the source and the only unknown is text width, which Pango
+already answers, so `mermaid_seq.c` measures and draws it directly and needs no
+dependency.
+
+graphviz is **dlopened, not linked** (`mermaid_gv.c`, eight opaque entry
+points). One binary works either way, and the package lists it as `optdepends`
+— the same bargain the maths typesetter strikes with its font. Sequence
+diagrams always draw; the graph dialects fall back to the code panel, whose
+language label then says why.
+
+The fence body is untrusted input that becomes DOT SOURCE, so a label escaping
+its quoting would change the graph rather than merely look wrong. Every label
+leaves through exactly one of `nd_mm_dot_str` (quoted attribute) or
+`nd_mm_html_esc` (HTML-like label), and both drop control bytes. That is what
+`test/check_mermaid.c` asserts, over mutated fences: whatever goes in, the dot
+that comes out still has balanced quotes and braces. **If you change a parser,
+run `make test` and then break it on purpose** — four mutations were checked
+when it was written, and its first run found a real bug.
 
 ## Architecture
 
@@ -212,6 +240,32 @@ These were each a real bug; the comments in the code say so at the site.
   lone `=` line inside a display formula is a setext heading underline and
   turns it into an H1. `preprocess.c` folds the newlines to spaces, which is
   length-preserving and so costs no edit record.
+- **Mermaid output is `svg:cairo`, not `svg`.** Plain SVG writes text as
+  text and lets the renderer shape it — and librsvg does not shape it the way
+  graphviz measured it. graphviz measures through Pango WITH hinting at 96dpi,
+  where Hack's 10.66px advance hints down to 10, then writes points; librsvg
+  draws the same string unhinted at 13px and gets 4% more. Invisible on a node
+  with a wide margin, obvious in a class-diagram cell, where the last member
+  ran out through the right border. `svg:cairo` emits positioned glyph
+  outlines, so measurement and drawing cannot disagree. The plain SVG is still
+  rendered, but only for its viewBox: it states the size in POINTS, which is
+  the coordinate system the dot's font sizes were written in.
+- **A mermaid registry entry is a pointer that must not move.** The flowchart
+  parser holds both ends of an edge while it parses the next node, so an array
+  of structs that reallocs is a use-after-free — which is what it was, found by
+  ASan. The registry stores individually allocated nodes for that reason.
+- **graphviz leaks the virtual edges it builds for CLUSTER layout**, so a
+  flowchart with a `subgraph` loses about a kilobyte per relayout. Not ours and
+  nothing to free from here; suppressed narrowly by function name in both
+  `tools/lsan.supp` and `tools/valgrind.supp` so other graphviz leaks still
+  report.
+- **`cairo_surface_set_device_scale` must come before the first draw.** Cairo
+  does not return an error for a late one, it asserts and aborts.
+- **Zoom scales a diagram, the display scale rasterises it.** They are separate
+  knobs on the same object: `nd_mermaid_build` takes the font scale and bakes
+  it into the drawn size, while the device scale is read off the Cairo target
+  at paint time and only decides raster resolution. Confusing them gives either
+  a diagram that ignores `+`/`-` or one that changes size when you move monitor.
 - **`xkb_state_key_get_utf8` is snprintf-shaped.** It returns the bytes
   *required*, not the bytes written, so a key level carrying several keysyms
   reports more than it wrote. Bound the return against the local buffer, not

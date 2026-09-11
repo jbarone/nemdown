@@ -38,10 +38,12 @@ Either gives a real package: `pacman -Qi nemdown-git` knows it, `-Rns` removes
 it cleanly, and rebuilding picks up new commits. It pulls its own build and
 runtime dependencies, so there is no list to install by hand.
 
-Maths needs a font carrying an OpenType MATH table — `otf-stix` is the
-preferred one and `otf-latinmodern-math` also works. Without either, formulas
-fall back to showing their source rather than failing. `wl-clipboard` enables
-copying. Both are `optdepends`, so neither is installed for you.
+Three things are optional and none is installed for you, because each only
+matters to documents that use it and each degrades to showing its source rather
+than failing. Maths needs a font carrying an OpenType MATH table — `otf-stix`
+preferred, `otf-latinmodern-math` also works. Mermaid flowcharts, state
+diagrams and class diagrams need `graphviz` (sequence diagrams do not, and
+always draw). `wl-clipboard` enables copying. All three are `optdepends`.
 
 It registers a launcher entry and an icon, and claims `text/markdown`, so it
 can be opened from a menu or by clicking a `.md` file. Launched with no file it
@@ -150,9 +152,11 @@ This list is the one in `packaging/aur/nemdown-git/PKGBUILD`, which a
 clean-chroot build checks; if the two ever disagree, the PKGBUILD is right.
 
 At runtime: `wl-clipboard` for copying, Hack Nerd Font and Hack Nerd Font Mono
-for the typography, and a maths font — `otf-stix` (AUR) preferred,
-`otf-latinmodern-math` also works. Without a maths font, formulas fall back to
-showing their source.
+for the typography, a maths font — `otf-stix` (AUR) preferred,
+`otf-latinmodern-math` also works — and `graphviz` for mermaid's graph
+dialects. graphviz is opened with `dlopen` rather than linked, so there is one
+binary either way: installed, the diagrams draw; absent, those fences show
+their source and everything else is unchanged.
 
 ## Rendering
 
@@ -180,7 +184,33 @@ accents, `\binom` and the `\mathbb`/`\mathcal` alphabets all work, with TeX's
 atom-class spacing. Without a maths font installed it falls back to showing the
 source in a labelled panel.
 
-Not yet: footnotes, mermaid, a vault browser, WebP.
+### Mermaid
+
+A ```` ```mermaid ```` fence is drawn rather than listed, for four dialects:
+
+| dialect | drawn by | covers |
+|---|---|---|
+| `flowchart` / `graph` | graphviz | all the node shapes, `-->` `---` `-.->` `==>` `~~~`, both label forms, `&` chains, nested `subgraph` |
+| `sequenceDiagram` | nemdown | `participant`/`actor` with `as`, `autonumber`, every arrow form, activations (`+`/`-` included), self-messages, notes, `alt`/`else`/`opt`/`loop`/`par`/`critical`/`break` |
+| `stateDiagram-v2` | graphviz | `[*]` start and end, transitions with labels, descriptions, composite states, `<<choice>>`, `<<fork>>`/`<<join>>` |
+| `classDiagram` | graphviz | members with visibility, static and abstract, `~T~` generics, `<<annotations>>`, every relationship with multiplicities and labels, `note for` |
+
+There is no JavaScript anywhere in this: mermaid's own renderer is a browser
+program, and running one would undo the point of the project. Three of the four
+dialects are *graphs* — a set of nodes and edges with no inherent geometry — so
+they are translated to dot and laid out by graphviz in-process, themed in
+Catppuccin so the result sits in the document rather than on top of it. The
+fourth is not a graph at all: a sequence diagram's columns and rows are already
+decided by the source, and the only unknown is how wide the text is, which
+Pango answers — so it is measured and drawn directly, and needs no dependency.
+
+Two consequences worth stating plainly. The output looks like nemdown, not like
+mermaid.js — the same diagram, drawn in the document's own hand. And what is
+supported is these four dialects, not mermaid: a `gantt`, an `erDiagram` or a
+`pie` shows its source, as does anything that fails to parse. A graph dialect
+with graphviz missing says so on the fence label.
+
+Not yet: footnotes, the other mermaid dialects, a vault browser, WebP.
 
 ## Development tools
 
@@ -193,10 +223,12 @@ build/render_png <file.md> out.png [w] [scale]
 build/render_app <file.md> out.png [w] [h] [scale] [scroll]  # incl. sidebar
 build/check_utf8                      # 26.8M-input sweep of the UTF-8 scrub
 build/check_pathguard                 # path containment against a symlink tree
+build/check_mermaid [rounds] [builds] # mutation sweep over the mermaid parsers
 ```
 
-`check_utf8` and `check_pathguard` assert rather than report, and `make test`
-runs them first: a regression in either is a hang or a path escape.
+These three assert rather than report, and `make test` runs them first: a
+regression in the first two is a hang or a path escape, and in the third it is
+a document steering what gets handed to graphviz.
 
 `render_png` at several scales is the cheapest regression test there is: layout
 is scale-invariant by design, so the content height must not move.

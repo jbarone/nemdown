@@ -22,6 +22,7 @@ pkgbase = nemdown
 	optdepends = wl-clipboard: copying selected text and code fences
 	optdepends = otf-stix: typeset maths (any font with an OpenType MATH table works)
 	optdepends = otf-latinmodern-math: typeset maths, Computer Modern instead of STIX
+	optdepends = graphviz: draw mermaid flowchart, state and class diagrams
 	optdepends = ttf-hack-nerd: the font the typography is designed around
 	source = nemdown-0.1.0.tar.gz::https://github.com/jbarone/nemdown/archive/refs/tags/v0.1.0.tar.gz
 	sha256sums = SKIP

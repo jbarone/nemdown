@@ -20,6 +20,7 @@ makedepends=('git' 'clang' 'wayland-protocols' 'pkgconf')
 optdepends=('wl-clipboard: copying selected text and code fences'
             'otf-stix: typeset maths (any font with an OpenType MATH table works)'
             'otf-latinmodern-math: typeset maths, Computer Modern instead of STIX'
+            'graphviz: draw mermaid flowchart, state and class diagrams'
             'ttf-hack-nerd: the font the typography is designed around')
 provides=('nemdown')
 conflicts=('nemdown')
