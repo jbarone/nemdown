@@ -41,4 +41,9 @@ void nd_wl_disconnect(struct nd_wl *wl);
 /* One iteration of the poll loop. Returns <0 to stop. */
 int nd_wl_dispatch(struct nd_app *app);
 
+/* errno-style reason the display died, or 0 if it did not. A fatal protocol
+ * error is reported here and nowhere else, so a caller that stops dispatching
+ * has to ask or it exits with nothing to say. */
+int nd_wl_display_error(struct nd_wl *wl);
+
 #endif /* NEMDOWN_WL_SHELL_H */

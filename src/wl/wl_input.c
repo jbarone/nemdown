@@ -5,6 +5,7 @@
 #include <linux/input-event-codes.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
 
@@ -57,6 +58,19 @@ static void kb_keymap(void *data, struct wl_keyboard *kb, uint32_t format,
   struct nd_input *in = data;
 
   if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) { close(fd); return; }
+
+  /* `size` is the compositor's claim about a file it also supplied, and mmap
+   * will happily map past the end of one: the surplus pages simply have no
+   * backing store, and the parser takes an UNCATCHABLE SIGBUS on the first of
+   * them. Ask the kernel what the file actually holds instead of believing
+   * the number. (size == 0 is separately rejected by mmap with EINVAL, which
+   * is what keeps the `size - 1` below from underflowing.) */
+  struct stat st;
+  if (fstat(fd, &st) != 0 || size > (uint32_t)st.st_size) {
+    nd_warn("keymap size %u exceeds the fd", size);
+    close(fd);
+    return;
+  }
 
   /* MAP_PRIVATE: the fd is sealed read-only, so MAP_SHARED fails. */
   char *map = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);

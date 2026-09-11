@@ -14,7 +14,33 @@
 #define ND_MIN_W     480
 #define ND_MIN_H     320
 
+/* Nothing on the wire bounds a configure or a scale, and both feed buffer
+ * sizing: at 30000x30000 the pool is 3.6GB and its size truncates to a
+ * negative int32 on the way to wl_shm_create_pool.
+ *
+ * Two separate clamps, because they defend different things. ND_MAX_DIM bounds
+ * the LOGICAL size, which is what flows into the page-scroll and zoom
+ * arithmetic. ND_MAX_DEV bounds the DEVICE size, which is what decides the
+ * allocation: at 4 bytes a pixel, 16384 square is exactly 1GiB, the largest
+ * square that still fits the int32 pool extent. Clamping only the logical size
+ * would not be enough -- 16384 logical at scale 1.5 is 24576 device, and 2.4GB.
+ * Past that the buffer stops growing and the viewport scales it, which is a
+ * soft edge rather than a blank window, at sizes no real display reaches. */
+#define ND_MAX_DIM   16384
+#define ND_MAX_DEV   16384
+#define ND_MIN_SCALE 0.25
+#define ND_MAX_SCALE 8.0
+
 static void render(struct nd_window *win);
+
+/* Zero keeps its protocol meaning of "the client picks", so it passes through
+ * untouched and the caller's existing fallback handles it. */
+static int clamp_dim(int32_t v, int min) {
+  if (v == 0) return 0;
+  if (v < min) return min;
+  if (v > ND_MAX_DIM) return ND_MAX_DIM;
+  return (int)v;
+}
 
 /* ---- frame callback ----------------------------------------------------- */
 
@@ -43,6 +69,8 @@ static void render(struct nd_window *win) {
   if (win->need_realloc) {
     int bw = (int)lround(win->w * win->scale);
     int bh = (int)lround(win->h * win->scale);
+    if (bw > ND_MAX_DEV) bw = ND_MAX_DEV;
+    if (bh > ND_MAX_DEV) bh = ND_MAX_DEV;
     if (bw != win->buf_w || bh != win->buf_h) {
       if (!nd_buffers_realloc(&win->bufs, win->app->wl.shm, bw, bh, win->scale)) {
         nd_warn("buffer allocation failed");
@@ -119,9 +147,12 @@ static void toplevel_configure(void *data, struct xdg_toplevel *tl,
                                int32_t w, int32_t h, struct wl_array *states) {
   (void)tl;
   struct nd_window *win = data;
-  /* Pending only: xdg_surface.configure is the commit point. */
-  win->pending_w = w;
-  win->pending_h = h;
+  /* Pending only: xdg_surface.configure is the commit point. A negative
+   * dimension would otherwise reach win->w, where it survives the realloc
+   * guard and flows on into the page-scroll and zoom arithmetic; zero keeps
+   * its existing meaning of "you choose". */
+  win->pending_w = clamp_dim(w, ND_MIN_W);
+  win->pending_h = clamp_dim(h, ND_MIN_H);
 
   win->activated = false;
   uint32_t *st;
@@ -163,6 +194,12 @@ static void frac_preferred_scale(void *data, struct wp_fractional_scale_v1 *fs,
   /* The protocol defines this as the numerator over a denominator of 120. */
   double s = scale_120 / 120.0;
   if (s <= 0.0 || s == win->scale) return;
+  /* scale_120 is a uint32_t, so an unclamped value reaches lround(w * scale)
+   * as ~2e10 and the narrowing to int is undefined before any size check sees
+   * it. Clamping here is what makes that conversion well defined. */
+  if (s < ND_MIN_SCALE) s = ND_MIN_SCALE;
+  if (s > ND_MAX_SCALE) s = ND_MAX_SCALE;
+  if (s == win->scale) return;
 
   nd_dbg("fractional scale -> %.4f", s);
   win->scale = s;

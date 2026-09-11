@@ -99,6 +99,11 @@ bool nd_wl_connect(struct nd_wl *wl, struct nd_app *app, char **err) {
   return true;
 }
 
+int nd_wl_display_error(struct nd_wl *wl) {
+  if (!wl || !wl->display) return 0;
+  return wl_display_get_error(wl->display);
+}
+
 void nd_wl_disconnect(struct nd_wl *wl) {
   if (wl->deco_mgr)   zxdg_decoration_manager_v1_destroy(wl->deco_mgr);
   if (wl->cursor_mgr) wp_cursor_shape_manager_v1_destroy(wl->cursor_mgr);

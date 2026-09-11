@@ -47,6 +47,17 @@ static struct nd_buffer *buffer_create(struct wl_shm *shm,
   if (b->stride <= 0) { free(b); return NULL; }
   b->size = (size_t)b->stride * (size_t)h;
 
+  /* wl_shm_create_pool takes an int32_t. The multiply above is 64-bit and
+   * correct, but narrowing it is not: 3.6GB arrives as a negative size and 4GB
+   * as exactly zero, and the compositor answers a bad pool extent with a fatal
+   * protocol error. The window clamps dimensions and scale, so reaching this
+   * needs both to be at their maximum -- it is the backstop, not the guard. */
+  if (b->size > (size_t)INT32_MAX) {
+    nd_warn("refusing a %zu byte buffer for %dx%d", b->size, w, h);
+    free(b);
+    return NULL;
+  }
+
   int fd = memfd_create("nemdown-shm", MFD_CLOEXEC | MFD_ALLOW_SEALING);
   if (fd < 0) { nd_warn("memfd_create failed"); free(b); return NULL; }
 

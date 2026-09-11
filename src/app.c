@@ -272,9 +272,15 @@ static bool search_key(struct nd_app *app, xkb_keysym_t sym) {
     default: {
       if (!app->input.xkb_state) return true;
       char buf[8];
+      /* snprintf-shaped: this returns the bytes REQUIRED, not the bytes
+       * written, so a key level carrying several keysyms reports more than it
+       * wrote. Bounding n only against app->query would then memcpy past the
+       * end of buf — an 8-byte read of adjacent stack straight into the query,
+       * which is painted and handed to g_utf8_casefold. The `< sizeof buf`
+       * test is the load-bearing half; a larger buf would not fix it. */
       int n = xkb_state_key_get_utf8(app->input.xkb_state,
                                      app->input.last_keycode, buf, sizeof buf);
-      if (n > 0 && (unsigned char)buf[0] >= 0x20 &&
+      if (n > 0 && (size_t)n < sizeof buf && (unsigned char)buf[0] >= 0x20 &&
           app->query_len + (size_t)n < sizeof app->query) {
         memcpy(app->query + app->query_len, buf, (size_t)n);
         app->query_len += (size_t)n;
@@ -1098,7 +1104,14 @@ bool nd_app_init(struct nd_app *app, const char *path, char **err) {
 int nd_app_run(struct nd_app *app) {
   nd_window_damage(&app->win);
   while (app->running) {
-    if (nd_wl_dispatch(app) < 0) break;
+    if (nd_wl_dispatch(app) < 0) {
+      /* Returning 0 here made a fatal protocol error indistinguishable from
+       * the user pressing q: the process just vanished, status 0, no
+       * diagnostic. libwayland has already recorded why. */
+      int err = nd_wl_display_error(&app->wl);
+      if (err) nd_warn("disconnected from the compositor: %s", strerror(err));
+      return 1;
+    }
   }
   return 0;
 }
