@@ -122,7 +122,11 @@ build/render_png: test/render_png.c $(ENGINE_SRC)
 	@mkdir -p build
 	$(CC) $(STD) $(WARN) -O0 -g -Isrc $(PKG_CFLAGS) -o $@ $^ $(PKG_LIBS)
 
-tools: build/dump_md4c build/dump_tree build/render_png
+build/render_app: test/render_app.c $(ENGINE_SRC) src/ui/sidebar.c
+	@mkdir -p build
+	$(CC) $(STD) $(WARN) -O0 -g -Isrc $(PKG_CFLAGS) -o $@ $^ $(PKG_LIBS)
+
+tools: build/dump_md4c build/dump_tree build/render_png build/render_app
 
 test: tools
 	@bash test/run.sh

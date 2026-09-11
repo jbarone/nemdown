@@ -11,6 +11,7 @@
 
 #include "doc/arena.h"
 #include "doc/parse.h"
+#include "doc/frontmatter.h"
 #include "doc/postprocess.h"
 #include "doc/preprocess.h"
 
@@ -117,6 +118,26 @@ int main(int argc, char **argv) {
   struct nd_source src;
   nd_preprocess(&a, buf, (size_t)len, &src);
   printf("[body_offset=%zu yaml=%zu bytes]\n", src.body_offset, src.yaml_len);
+
+  nd_props props;
+  nd_frontmatter_parse(&a, src.yaml, src.yaml_len, &props);
+  static const char *tn[] = {"text","list","number","checkbox","date","datetime","empty"};
+  printf("[properties: %zu%s]\n", props.count, props.error ? " WITH ERROR" : "");
+  if (props.error) printf("  error line %d: %s\n", props.error_line, props.error);
+  for (size_t i = 0; i < props.count; i++) {
+    const nd_property *pr = &props.items[i];
+    printf("  %-10s %-9s ", pr->key, tn[pr->type]);
+    if (pr->type == ND_PROP_LIST) {
+      for (size_t k = 0; k < pr->nitems; k++) printf("%s%s", k?", ":"", pr->items[k]);
+    } else if (pr->type == ND_PROP_CHECKBOX) {
+      printf("%s", pr->checkbox ? "true" : "false");
+    } else if (pr->type == ND_PROP_NUMBER) {
+      printf("%g", pr->number);
+    } else if (pr->text) {
+      printf("%s", pr->text);
+    }
+    putchar('\n');
+  }
 
   nd_block *root = nd_parse(&a, &src);
   if (!root) { fprintf(stderr, "parse failed\n"); return 1; }

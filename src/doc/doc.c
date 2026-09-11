@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "doc/arena.h"
+#include "doc/frontmatter.h"
 #include "doc/layout.h"
 #include "doc/paint.h"
 #include "doc/parse.h"
@@ -73,6 +74,7 @@ static bool rebuild(nd_doc *d, char **err) {
     return false;
   }
 
+  nd_frontmatter_parse(&d->arena, d->src.yaml, d->src.yaml_len, &d->props);
   nd_postprocess(&d->arena, d->root);
   nd_toc_build(&d->arena, d->root, &d->toc_store, &d->toc);
   d->title = nd_toc_document_title(&d->arena, d->root, d->path);
@@ -165,6 +167,8 @@ bool nd_doc_hit_test(nd_doc *d, double x, double doc_y, nd_hit *out) {
   out->kind = ND_HIT_NONE;
   return false;
 }
+
+struct _PangoContext *nd_doc_pango_context(const nd_doc *d) { return d->pctx; }
 
 const nd_props *nd_doc_props(const nd_doc *d) { return &d->props; }
 const nd_toc   *nd_doc_toc(const nd_doc *d)   { return &d->toc; }

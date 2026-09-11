@@ -144,15 +144,40 @@ void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat) {
 }
 
 void nd_app_pointer_motion(struct nd_app *app, double x, double y) {
-  (void)app; (void)x; (void)y;
+  if (!app->doc) return;
+
+  int hover = -1;
+  if (app->sidebar_visible && x < app->sidebar_w) {
+    hover = nd_sidebar_toc_at(&app->sidebar, app->sidebar_w, (double)app->win.h,
+                              nd_doc_props(app->doc), nd_doc_toc(app->doc), x, y);
+  }
+  if (hover != app->sidebar.hover_toc) {
+    app->sidebar.hover_toc = hover;
+    mark(app, ND_DIRTY_SIDEBAR);
+  }
 }
 
 void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed) {
-  (void)app; (void)x; (void)y; (void)pressed;
+  if (!pressed || !app->doc) return;
+
+  if (app->sidebar_visible && x < app->sidebar_w) {
+    int idx = nd_sidebar_toc_at(&app->sidebar, app->sidebar_w,
+                                (double)app->win.h, nd_doc_props(app->doc),
+                                nd_doc_toc(app->doc), x, y);
+    if (idx >= 0) {
+      /* Set the target and let the smoother ease it there. */
+      app->scroll.target = nd_toc_target_y(app->doc, idx, (double)app->win.h);
+      app->scroll.animating = true;
+      mark(app, ND_DIRTY_ALL);
+    }
+  }
 }
 
 void nd_app_pointer_leave(struct nd_app *app) {
-  (void)app;
+  if (app->sidebar.hover_toc != -1) {
+    app->sidebar.hover_toc = -1;
+    mark(app, ND_DIRTY_SIDEBAR);
+  }
 }
 
 void nd_app_resized(struct nd_app *app, int w, int h) {
@@ -179,27 +204,39 @@ void nd_app_paint(struct nd_app *app, cairo_t *cr, int w, int h, double scale) {
 
   double sidebar = app->sidebar_visible ? app->sidebar_w : 0.0;
 
-  if (sidebar > 0.0) {
-    nd_src(cr, ND_BG_SIDEBAR);
-    cairo_rectangle(cr, 0, 0, sidebar, h);
-    cairo_fill(cr);
-
-    /* Snapped, or a 1px rule straddles a half device pixel at 1.5x and blurs. */
-    nd_src(cr, ND_DIVIDER);
-    cairo_rectangle(cr, nd_snap(sidebar, scale), 0, 1.0 / scale, h);
-    cairo_fill(cr);
-  }
-
   if (!app->doc) return;
 
   double content_w = (double)w - sidebar;
   double content_h = (double)h;
   if (content_w <= 0) return;
 
+  /* Layout first: the TOC's y-offsets, and therefore which entry is active,
+   * are only meaningful once the document has been laid out at this width. */
   app->scroll.max = nd_doc_layout(app->doc, content_w, app->font_scale) - content_h;
   if (app->scroll.max < 0) app->scroll.max = 0;
   scroll_clamp(app);
   if (app->scroll.offset > app->scroll.max) app->scroll.offset = app->scroll.max;
+
+  if (sidebar > 0.0) {
+    nd_src(cr, ND_BG_SIDEBAR);
+    cairo_rectangle(cr, 0, 0, sidebar, h);
+    cairo_fill(cr);
+
+    app->sidebar.active_toc = nd_toc_active(app->doc, app->scroll.offset);
+
+    cairo_save(cr);
+    cairo_rectangle(cr, 0, 0, sidebar, h);
+    cairo_clip(cr);
+    nd_sidebar_paint(&app->sidebar, cr, sidebar, (double)h,
+                     nd_doc_props(app->doc), nd_doc_toc(app->doc),
+                     nd_doc_title(app->doc), scale);
+    cairo_restore(cr);
+
+    /* Snapped, or a 1px rule straddles a half device pixel at 1.5x and blurs. */
+    nd_src(cr, ND_DIVIDER);
+    cairo_rectangle(cr, nd_snap(sidebar, scale), 0, 1.0 / scale, h);
+    cairo_fill(cr);
+  }
 
   cairo_save(cr);
   cairo_rectangle(cr, sidebar, 0, content_w, content_h);
@@ -242,6 +279,8 @@ bool nd_app_init(struct nd_app *app, const char *path, char **err) {
 
   app->doc = nd_doc_open(app->path, err);
   if (!app->doc) return false;
+
+  nd_sidebar_init(&app->sidebar, nd_doc_pango_context(app->doc));
 
   if (!nd_input_init(&app->input, app)) {
     *err = nd_strdup_fmt("cannot initialise input");

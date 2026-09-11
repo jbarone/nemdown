@@ -9,6 +9,7 @@
 #include <xkbcommon/xkbcommon.h>
 
 #include "doc/doc.h"
+#include "ui/sidebar.h"
 #include "wl/wl_input.h"
 #include "wl/wl_shell.h"
 #include "wl/wl_window.h"
@@ -44,7 +45,8 @@ struct nd_app {
   int   watch_fd;
   int   watch_wd;
 
-  struct nd_scroll scroll;
+  struct nd_scroll  scroll;
+  struct nd_sidebar sidebar;
 
   unsigned dirty;
   bool     running;

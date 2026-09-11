@@ -103,6 +103,10 @@ bool nd_doc_hit_test(nd_doc *d, double x, double doc_y, nd_hit *out);
 
 /* ---- sidebar data ------------------------------------------------------- */
 
+/* The sidebar draws text too; sharing one context keeps font options and the
+ * scale-invariance guarantee identical on both sides. */
+struct _PangoContext *nd_doc_pango_context(const nd_doc *d);
+
 const nd_props *nd_doc_props(const nd_doc *d);
 const nd_toc   *nd_doc_toc(const nd_doc *d);
 const char     *nd_doc_title(const nd_doc *d);
