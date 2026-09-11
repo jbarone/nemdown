@@ -79,8 +79,21 @@ LDFLAGS_debug   :=
 LDFLAGS_release := -Wl,-O1 -Wl,--as-needed -Wl,-z,relro -Wl,-z,now
 LDFLAGS_asan    := -fsanitize=address,undefined
 
-CFLAGS  = $(STD) $(WARN) $(CFLAGS_$(MODE)) -Isrc -I$(GEN) $(PKG_CFLAGS) -MMD -MP
-LDFLAGS = $(LDFLAGS_$(MODE))
+# ND_CFLAGS, not CFLAGS: assigning CFLAGS here would OVERRIDE whatever the
+# environment set, and CFLAGS/CPPFLAGS/LDFLAGS are exactly how a distro build
+# injects its own settings. Arch's makepkg passes -march, -fno-plt, the
+# stack-clash and CFI hardening, LTO and the debug-package flags that way, and
+# a build that silently drops them is both less safe and unpackageable. They go
+# LAST so a packager's choice beats ours where the two disagree.
+#
+# -D_FORTIFY_SOURCE=3 ends up defined twice under makepkg, which sets it too.
+# That is fine only because both say 3: an identical redefinition is not a
+# diagnostic, a differing one is.
+ND_CFLAGS  = $(STD) $(WARN) $(CFLAGS_$(MODE)) -Isrc -I$(GEN) $(PKG_CFLAGS) \
+             -MMD -MP $(CPPFLAGS) $(CFLAGS)
+# The compiler driver links, so it needs the compile flags too: with LTO the
+# code generation happens here, and -flto reaches us through CFLAGS.
+ND_LDFLAGS = $(LDFLAGS_$(MODE)) $(CFLAGS) $(LDFLAGS)
 
 debug release asan:
 	@$(MAKE) --no-print-directory MODE=$@ build/$@/nemdown
@@ -99,15 +112,15 @@ $(OBJ): $(PROTO_HDR)
 
 $(BUILD)/%.o: %.c
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(ND_CFLAGS) -c -o $@ $<
 
 # Generated protocol code is machine output; we do not lint it.
 $(BUILD)/proto/%.o: $(GEN)/%.c
 	@mkdir -p $(@D)
-	$(CC) $(STD) -O2 -g -I$(GEN) $(PKG_CFLAGS) -c -o $@ $<
+	$(CC) $(STD) -O2 -g -I$(GEN) $(PKG_CFLAGS) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
 $(BUILD)/nemdown: $(OBJ)
-	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(PKG_LIBS)
+	$(CC) $(ND_LDFLAGS) -o $@ $(OBJ) $(PKG_LIBS)
 
 # Test harnesses link the engine only: no Wayland, so they run headless.
 ENGINE_SRC := $(wildcard src/doc/*.c) src/ui/typography.c $(wildcard src/util/*.c)
@@ -161,11 +174,15 @@ install: release
 	install -Dm755 build/release/nemdown $(DESTDIR)$(PREFIX)/bin/nemdown
 	install -Dm644 nemdown.desktop $(DESTDIR)$(PREFIX)/share/applications/nemdown.desktop
 	install -Dm644 README.md $(DESTDIR)$(PREFIX)/share/doc/nemdown/README.md
+	# MIT is not in /usr/share/licenses/common, so the text has to ship: an
+	# Arch package without it fails namcap, and the licence requires it anyway.
+	install -Dm644 LICENSE $(DESTDIR)$(PREFIX)/share/licenses/nemdown/LICENSE
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/nemdown \
 	      $(DESTDIR)$(PREFIX)/share/applications/nemdown.desktop
-	rm -rf $(DESTDIR)$(PREFIX)/share/doc/nemdown
+	rm -rf $(DESTDIR)$(PREFIX)/share/doc/nemdown \
+	       $(DESTDIR)$(PREFIX)/share/licenses/nemdown
 
 clean:
 	rm -rf build compile_commands.json
@@ -179,7 +196,7 @@ compile_commands.json: Makefile
 	for f in $(SRC) $(PROTO_SRC); do \
 	  i=$$((i+1)); \
 	  printf '  {"directory": "%s", "file": "%s", "command": "%s %s -c %s"}' \
-	    "$(CURDIR)" "$(CURDIR)/$$f" "$(CC)" "$(CFLAGS)" "$$f" >> $@; \
+	    "$(CURDIR)" "$(CURDIR)/$$f" "$(CC)" "$(ND_CFLAGS)" "$$f" >> $@; \
 	  [ $$i -lt $$n ] && printf ',' >> $@; printf '\n' >> $@; \
 	done
 	@printf ']\n' >> $@

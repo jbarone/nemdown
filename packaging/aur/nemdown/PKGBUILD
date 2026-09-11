@@ -1,0 +1,43 @@
+# Maintainer: Joshua <joshua@bar1security.com>
+#
+# Tracks tagged releases. Use `nemdown-git` to build from the repository tip.
+#
+# BEFORE PUBLISHING:
+#   1. set `url` to the repository's real public address
+#   2. tag a release (`git tag -a v0.1.0 -m ...` and push the tag)
+#   3. run `updpkgsums` to replace the sha256 placeholder below
+# A published PKGBUILD whose checksum is still SKIP is one nobody can verify,
+# which is the whole point of shipping a checksum.
+
+pkgname=nemdown
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Native Wayland markdown viewer with Obsidian-style rendering and typeset maths'
+arch=('x86_64')
+url='https://github.com/CHANGEME/nemdown'
+license=('MIT')
+
+depends=('wayland' 'libxkbcommon' 'cairo' 'pango' 'md4c' 'libyaml'
+         'gdk-pixbuf2' 'librsvg' 'glib2' 'harfbuzz')
+makedepends=('clang' 'wayland-protocols' 'pkgconf')
+optdepends=('wl-clipboard: copying selected text and code fences'
+            'otf-stix: typeset maths (any font with an OpenType MATH table works)'
+            'otf-latinmodern-math: typeset maths, Computer Modern instead of STIX'
+            'ttf-hack-nerd: the font the typography is designed around')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname-$pkgver"
+  make release
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  make test
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  make PREFIX=/usr DESTDIR="$pkgdir" install
+}
