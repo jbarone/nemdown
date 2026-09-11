@@ -12,6 +12,35 @@ The window is a split: a sidebar listing the file's frontmatter properties above
 its table of contents, and the rendered document beside it. Catppuccin Mocha,
 teal accent, no theme switcher.
 
+## Installing
+
+Arch, as a pacman-tracked package. Needs `base-devel`.
+
+```
+git clone https://github.com/jbarone/nemdown.git
+cd nemdown/packaging/aur/nemdown-git && makepkg -si
+```
+
+Or, with an AUR helper, straight from the PKGBUILD directory:
+
+```
+yay -B nemdown/packaging/aur/nemdown-git
+```
+
+Either gives a real package: `pacman -Qi nemdown-git` knows it, `-Rns` removes
+it cleanly, and rebuilding picks up new commits. It pulls its own build and
+runtime dependencies, so there is no list to install by hand.
+
+Maths needs a font carrying an OpenType MATH table — `otf-stix` is the
+preferred one and `otf-latinmodern-math` also works. Without either, formulas
+fall back to showing their source rather than failing. `wl-clipboard` enables
+copying. Both are `optdepends`, so neither is installed for you.
+
+`packaging/aur/nemdown` is the same package built from a tagged release rather
+than the tip; it needs a tag to exist first. Neither is on the AUR yet.
+
+To build without installing, see [Building](#building).
+
 ## Keys
 
 ### Reading
@@ -88,6 +117,9 @@ Esc closes the search field, then clears a selection, then quits.
 
 ## Building
 
+For working on nemdown. To just use it, see [Installing](#installing) — the
+package pulls these in for you.
+
 ```
 make          # debug build at build/debug/nemdown
 make release  # optimised
@@ -97,12 +129,17 @@ make valgrind # memcheck over every fixture; catches what ASan does not
 sudo make install
 ```
 
-Dependencies, all from the Arch repos: `wayland` `wayland-protocols` `cairo`
-`pango` `md4c` `libyaml` `libxkbcommon` `gdk-pixbuf2` `librsvg`, plus
-`wl-clipboard` at runtime. Fonts: Hack Nerd Font and Hack Nerd Font Mono, plus
-a maths font for typesetting — `otf-stix` (AUR) is preferred,
-`otf-latinmodern-math` also works, and without either, maths falls back to
-source.
+Build: `clang` `pkgconf` `wayland-protocols`. Link: `wayland` `libxkbcommon`
+`cairo` `pango` `md4c` `libyaml` `gdk-pixbuf2` `librsvg` `glib2` `harfbuzz` —
+glib for its UTF-8 helpers and harfbuzz for the OpenType MATH table, both
+linked directly rather than only through pango. All from the official repos.
+This list is the one in `packaging/aur/nemdown-git/PKGBUILD`, which a
+clean-chroot build checks; if the two ever disagree, the PKGBUILD is right.
+
+At runtime: `wl-clipboard` for copying, Hack Nerd Font and Hack Nerd Font Mono
+for the typography, and a maths font — `otf-stix` (AUR) preferred,
+`otf-latinmodern-math` also works. Without a maths font, formulas fall back to
+showing their source.
 
 ## Rendering
 
