@@ -11,6 +11,7 @@
 
 #include "doc/arena.h"
 #include "doc/parse.h"
+#include "doc/postprocess.h"
 #include "doc/preprocess.h"
 
 static const char *kind_name(nd_block_kind k) {
@@ -74,6 +75,11 @@ static void walk(const nd_block *b, int depth) {
     case ND_CELL:  printf(" align=%u", b->cell_align); break;
     case ND_ROW:   printf(" header=%u", b->row_is_header); break;
     case ND_IMAGE: printf(" src=%s", b->img_src ? b->img_src : "-"); break;
+    case ND_CALLOUT:
+      printf(" type=%u folded=%u title=\"%.*s\"", b->callout_type,
+             b->callout_folded, (int)b->title.len,
+             b->title.text ? b->title.text : "");
+      break;
     default: break;
   }
 
@@ -114,6 +120,7 @@ int main(int argc, char **argv) {
 
   nd_block *root = nd_parse(&a, &src);
   if (!root) { fprintf(stderr, "parse failed\n"); return 1; }
+  nd_postprocess(&a, root);
   walk(root, 0);
 
   printf("[arena: %zu bytes]\n", a.total);

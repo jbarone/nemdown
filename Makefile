@@ -28,7 +28,9 @@ ifneq ($(shell pkg-config --exists $(PKGS) && echo ok),ok)
   $(error missing dependencies: run `pkg-config --print-errors $(PKGS)`)
 endif
 
-PKG_CFLAGS := $(shell pkg-config --cflags $(PKGS))
+# -isystem, not -I: these are third-party headers and GLib in particular trips
+# -Wpedantic. Their noise would bury our own warnings.
+PKG_CFLAGS := $(patsubst -I%,-isystem %,$(shell pkg-config --cflags $(PKGS)))
 PKG_LIBS   := $(shell pkg-config --libs $(PKGS)) -lm
 
 WL_SCANNER := $(shell pkg-config --variable=wayland_scanner wayland-scanner)
@@ -106,7 +108,7 @@ $(BUILD)/nemdown: $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(PKG_LIBS)
 
 # Test harnesses link the engine only: no Wayland, so they run headless.
-ENGINE_SRC := $(wildcard src/doc/*.c) src/util/log.c
+ENGINE_SRC := $(wildcard src/doc/*.c) src/ui/typography.c src/util/log.c
 
 build/dump_md4c: test/dump_md4c.c
 	@mkdir -p build
@@ -116,7 +118,11 @@ build/dump_tree: test/dump_tree.c $(ENGINE_SRC)
 	@mkdir -p build
 	$(CC) $(STD) $(WARN) -O0 -g -Isrc $(PKG_CFLAGS) -o $@ $^ $(PKG_LIBS)
 
-tools: build/dump_md4c build/dump_tree
+build/render_png: test/render_png.c $(ENGINE_SRC)
+	@mkdir -p build
+	$(CC) $(STD) $(WARN) -O0 -g -Isrc $(PKG_CFLAGS) -o $@ $^ $(PKG_LIBS)
+
+tools: build/dump_md4c build/dump_tree build/render_png
 
 test: tools
 	@bash test/run.sh

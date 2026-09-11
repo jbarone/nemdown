@@ -43,6 +43,7 @@ struct span_frame {
   uint32_t start;
   uint16_t depth;
   char    *href;
+  bool     suppress_text; /* IMG alt text belongs to the image, not the prose */
 };
 
 /* One entry per open block. The children vector lives here rather than in a
@@ -64,6 +65,8 @@ struct builder {
   int       spsp;
 
   nd_block *leaf;       /* where text() appends; NULL inside containers */
+  nd_block *img_alt;    /* image currently collecting its alt text, if any */
+  uint32_t  first_break;
   bool      leaf_implicit; /* leaf was synthesised for bare text, see below */
   struct vec text;      /* char   — current inline text */
   struct vec runs;      /* nd_run — current inline runs */
@@ -117,6 +120,7 @@ static void inl_begin(struct builder *b) {
   b->text.len = 0;
   b->runs.len = 0;
   b->spsp = 0;
+  b->first_break = 0;
 }
 
 static void inl_put(struct builder *b, const char *s, size_t n) {
@@ -138,6 +142,7 @@ static int run_cmp(const void *pa, const void *pb) {
 }
 
 static void inl_commit(struct builder *b, nd_inline *out) {
+  out->first_break = b->first_break;
   out->len = (uint32_t)b->text.len;
   out->text = nd_arena_strndup(b->a, b->text.p ? b->text.p : "", b->text.len);
 
@@ -350,6 +355,7 @@ static int enter_span(MD_SPANTYPE type, void *detail, void *ud) {
   f->href = NULL;
   f->start = (uint32_t)b->text.len;
   f->depth = (uint16_t)b->spsp;
+  f->suppress_text = false;
 
   switch (type) {
     case MD_SPAN_EM:     f->flags = ND_RUN_EM;     break;
@@ -378,6 +384,10 @@ static int enter_span(MD_SPANTYPE type, void *detail, void *ud) {
       img->img_src = attr_dup(b, &d->src);
       adopt(b, img);
       f->flags = 0;
+      /* The alt text is the image's caption (and carries our rewritten size
+       * hint); letting it land in the paragraph would read as stray digits. */
+      f->suppress_text = true;
+      b->img_alt = img;
       break;
     }
     case MD_SPAN_LATEXMATH:
@@ -396,6 +406,7 @@ static int leave_span(MD_SPANTYPE type, void *detail, void *ud) {
   if (b->spsp <= 0) return 0;
 
   struct span_frame *f = &b->spans[--b->spsp];
+  if (f->suppress_text) b->img_alt = NULL;
   if (f->flags == 0) return 0;
 
   nd_run *r = vec_push(&b->runs);
@@ -409,6 +420,16 @@ static int leave_span(MD_SPANTYPE type, void *detail, void *ud) {
 
 static int text_cb(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size, void *ud) {
   struct builder *b = ud;
+
+  for (int i = 0; i < b->spsp; i++) {
+    if (b->spans[i].suppress_text) {
+      if (b->img_alt && type != MD_TEXT_SOFTBR && type != MD_TEXT_BR) {
+        /* The rewriter puts an Obsidian `|400` size hint here. */
+        b->img_alt->img_size = nd_arena_strndup(b->a, text, size);
+      }
+      return 0;
+    }
+  }
 
   if (!b->leaf) {
     if (b->sp <= 0) return 0;
@@ -431,6 +452,7 @@ static int text_cb(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size, void *ud
       break;
 
     case MD_TEXT_SOFTBR:
+      if (b->first_break == 0) b->first_break = (uint32_t)b->text.len;
       inl_put(b, " ", 1);
       break;
 

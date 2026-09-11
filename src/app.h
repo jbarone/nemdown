@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <xkbcommon/xkbcommon.h>
 
+#include "doc/doc.h"
 #include "wl/wl_input.h"
 #include "wl/wl_shell.h"
 #include "wl/wl_window.h"
@@ -38,7 +39,8 @@ struct nd_app {
   struct nd_window win;
   struct nd_input  input;
 
-  char *path;
+  char    *path;
+  nd_doc  *doc;
   int   watch_fd;
   int   watch_wd;
 

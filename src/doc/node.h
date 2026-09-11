@@ -47,6 +47,10 @@ typedef struct {
   uint32_t len;
   nd_run  *runs;
   uint32_t nruns;
+  /* Byte offset of the first soft break, or 0 for none. Soft breaks render as
+   * spaces (Obsidian's default), so the source line boundary would otherwise be
+   * unrecoverable — and callout titles are delimited by exactly that. */
+  uint32_t first_break;
 } nd_inline;
 
 /* Per-block layout results, recomputed when the column width changes. */

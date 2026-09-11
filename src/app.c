@@ -23,6 +23,8 @@
 
 #define ND_INOTIFY_DEBOUNCE_MS 50
 
+static void scroll_clamp(struct nd_app *app);
+
 static void mark(struct nd_app *app, unsigned bits) {
   app->dirty |= bits;
   nd_window_damage(&app->win);
@@ -172,28 +174,39 @@ void nd_app_quit(struct nd_app *app) {
 /* ---- painting ------------------------------------------------------------ */
 
 void nd_app_paint(struct nd_app *app, cairo_t *cr, int w, int h, double scale) {
-  /* Placeholder until the document engine lands: proves the surface, the
-   * fractional scale, and the hairline snapping are all correct. */
   nd_src(cr, ND_BG_CONTENT);
   cairo_paint(cr);
 
-  if (app->sidebar_visible) {
+  double sidebar = app->sidebar_visible ? app->sidebar_w : 0.0;
+
+  if (sidebar > 0.0) {
     nd_src(cr, ND_BG_SIDEBAR);
-    cairo_rectangle(cr, 0, 0, app->sidebar_w, h);
+    cairo_rectangle(cr, 0, 0, sidebar, h);
     cairo_fill(cr);
 
-    double x = nd_snap(app->sidebar_w, scale);
+    /* Snapped, or a 1px rule straddles a half device pixel at 1.5x and blurs. */
     nd_src(cr, ND_DIVIDER);
-    cairo_rectangle(cr, x, 0, 1.0 / scale, h);
+    cairo_rectangle(cr, nd_snap(sidebar, scale), 0, 1.0 / scale, h);
     cairo_fill(cr);
   }
 
-  /* A 1px hairline that must look 1px, not 1.5px soft: the scale check. */
-  double y = nd_snap(h * 0.5 - app->scroll.offset, scale);
-  nd_src(cr, ND_ACCENT);
-  cairo_rectangle(cr, app->sidebar_visible ? app->sidebar_w + 40 : 40,
-                  y, w * 0.4, 1.0 / scale);
-  cairo_fill(cr);
+  if (!app->doc) return;
+
+  double content_w = (double)w - sidebar;
+  double content_h = (double)h;
+  if (content_w <= 0) return;
+
+  app->scroll.max = nd_doc_layout(app->doc, content_w, app->font_scale) - content_h;
+  if (app->scroll.max < 0) app->scroll.max = 0;
+  scroll_clamp(app);
+  if (app->scroll.offset > app->scroll.max) app->scroll.offset = app->scroll.max;
+
+  cairo_save(cr);
+  cairo_rectangle(cr, sidebar, 0, content_w, content_h);
+  cairo_clip(cr);
+  cairo_translate(cr, sidebar, 0);
+  nd_doc_paint(app->doc, cr, app->scroll.offset, content_h);
+  cairo_restore(cr);
 }
 
 /* ---- file watching ------------------------------------------------------- */
@@ -226,6 +239,9 @@ bool nd_app_init(struct nd_app *app, const char *path, char **err) {
     *err = nd_strdup_fmt("cannot open %s", path);
     return false;
   }
+
+  app->doc = nd_doc_open(app->path, err);
+  if (!app->doc) return false;
 
   if (!nd_input_init(&app->input, app)) {
     *err = nd_strdup_fmt("cannot initialise input");
@@ -270,6 +286,7 @@ int nd_app_run(struct nd_app *app) {
 
 void nd_app_finish(struct nd_app *app) {
   nd_window_destroy(&app->win);
+  nd_doc_free(app->doc);
   nd_input_finish(&app->input);
   nd_wl_disconnect(&app->wl);
   if (app->watch_fd >= 0) close(app->watch_fd);
