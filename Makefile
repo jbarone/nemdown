@@ -74,7 +74,9 @@ CFLAGS_asan    := -O1 -g3 -fno-omit-frame-pointer -DNEMDOWN_DEBUG=1 \
                   -fsanitize=address,undefined -fno-sanitize-recover=all
 
 LDFLAGS_debug   :=
-LDFLAGS_release := -Wl,-O1 -Wl,--as-needed
+# Full RELRO: the GOT is resolved and made read-only at load, so a write
+# primitive cannot retarget a library call. Partial RELRO leaves it writable.
+LDFLAGS_release := -Wl,-O1 -Wl,--as-needed -Wl,-z,relro -Wl,-z,now
 LDFLAGS_asan    := -fsanitize=address,undefined
 
 CFLAGS  = $(STD) $(WARN) $(CFLAGS_$(MODE)) -Isrc -I$(GEN) $(PKG_CFLAGS) -MMD -MP
