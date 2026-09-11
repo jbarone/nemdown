@@ -20,3 +20,4 @@ packaging/aur/*/pkg/
 packaging/aur/nemdown-git/nemdown-git/
 packaging/aur/*/*.pkg.tar.zst
 packaging/aur/*/*.tar.gz
+packaging/aur/*/*.log
