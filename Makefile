@@ -105,14 +105,21 @@ $(BUILD)/proto/%.o: $(GEN)/%.c
 $(BUILD)/nemdown: $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(PKG_LIBS)
 
-# Test harnesses link the engine only: no Wayland, no compositor needed.
-ENGINE_SRC := $(filter-out src/main.c,$(wildcard src/doc/*.c src/ui/theme.c))
+# Test harnesses link the engine only: no Wayland, so they run headless.
+ENGINE_SRC := $(wildcard src/doc/*.c) src/util/log.c
 
 build/dump_md4c: test/dump_md4c.c
 	@mkdir -p build
 	$(CC) $(STD) $(WARN) -O0 -g -Isrc $(PKG_CFLAGS) -o $@ $< $(PKG_LIBS)
 
-tools: build/dump_md4c
+build/dump_tree: test/dump_tree.c $(ENGINE_SRC)
+	@mkdir -p build
+	$(CC) $(STD) $(WARN) -O0 -g -Isrc $(PKG_CFLAGS) -o $@ $^ $(PKG_LIBS)
+
+tools: build/dump_md4c build/dump_tree
+
+test: tools
+	@bash test/run.sh
 
 run: debug
 	./build/debug/nemdown $(FILE)
@@ -144,6 +151,6 @@ compile_commands.json: Makefile
 	done
 	@printf ']\n' >> $@
 
-.PHONY: debug release asan run install uninstall clean tools
+.PHONY: debug release asan run install uninstall clean tools test
 
 -include $(DEP)
