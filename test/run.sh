@@ -11,9 +11,10 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 fail=0
 
-# These two assert rather than report, so they run first: a regression in
-# either is a hang or a path escape, not a rendering nit.
-for check in check_utf8 check_pathguard; do
+# These assert rather than report, so they run first: a regression in the first
+# two is a hang or a path escape, and in the third it is a document steering
+# what gets handed to graphviz. None of them is a rendering nit.
+for check in check_utf8 check_pathguard check_mermaid; do
   if ! ./build/"$check"; then
     fail=1
   fi
