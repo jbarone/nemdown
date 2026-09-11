@@ -204,6 +204,16 @@ static void guide_sync(struct nd_app *app) {
   uint32_t n = nd_doc_reading_count(app->doc);
   if (n == 0) { app->guide_idx = -1; return; }
 
+  /* The pin belongs to one specific scroll, the one guide_goto asked for. If
+   * anything else has moved the target since -- a search jumping to a match, a
+   * contents click, a wikilink -- the pin is stale and the cursor goes back to
+   * following the viewport. Checking the target rather than clearing the pin at
+   * each call site means every one of them is covered, including the ones added
+   * later: a search used to leave the cursor pinned to a block far above the
+   * match, where it was clipped away and looked like it had vanished. */
+  if (app->guide_pinned && app->scroll.target != app->guide_pin_target)
+    app->guide_pinned = false;
+
   double top = app->scroll.offset, bot = top + (double)app->win.h;
   int idx = app->guide_idx;
 
@@ -830,7 +840,8 @@ static void guide_goto(struct nd_app *app, int idx) {
    * end the offset exceeds the maximum and clamps there, so the page holds
    * still again and the marker walks down to the last block. */
   app->scroll.target = y + h / 2.0 - (double)app->win.h / 2.0;
-  scroll_clamp(app);
+  scroll_clamp(app);            /* record the CLAMPED target, not the raw one */
+  app->guide_pin_target = app->scroll.target;
   app->scroll.animating = true;
   note_scroll_activity(app);
   mark(app, ND_DIRTY_ALL);

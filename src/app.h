@@ -94,6 +94,7 @@ struct nd_app {
    * the topmost visible block and could never reach the last ones. */
   int      guide_idx;              /* current stop, -1 when none */
   bool     guide_pinned;           /* moved deliberately; do not re-derive */
+  double   guide_pin_target;       /* the scroll the pin belongs to */
   double   guide_y, guide_h;       /* drawn, document space */
   double   guide_ty, guide_th;     /* target, chased by the smoother */
   bool     guide_anim;
