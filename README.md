@@ -24,9 +24,12 @@ Ctrl-d / Ctrl-u    half page           PgUp / PgDn    page
 Ctrl-C             copy                q / Esc        quit
 ```
 
-A thin teal mark in the left margin tracks the paragraph you are on, moving
-as you scroll and stepping a whole paragraph at a time with `{` and `}`. It is
-on by default; `f` turns it off.
+A thin teal mark in the left margin tracks the block you are on. `{` and `}`
+move it a block at a time and the page follows: it walks down a still page
+until it reaches the middle, then the page scrolls to keep it centred, and at
+the end of the document the page stops and it walks down to the last block.
+Scrolling by hand moves it only as far as it must to stay on screen. It is on
+by default; `f` turns it off.
 
 Clicking a contents entry scrolls to that heading. Clicking a `[[wikilink]]`
 opens that note — `Backspace` goes back. Clicking a link opens it;

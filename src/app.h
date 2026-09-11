@@ -89,7 +89,11 @@ struct nd_app {
   /* Reading guide: a thin marker beside the stop being read. Kept here rather
    * than in the engine because it is a view of input state, like hover. */
   bool     guide_on;
+  /* The cursor, and it is a cursor: authoritative, not derived from the scroll
+   * offset. Deriving it meant that at the bottom of a document it pinned to
+   * the topmost visible block and could never reach the last ones. */
   int      guide_idx;              /* current stop, -1 when none */
+  bool     guide_pinned;           /* moved deliberately; do not re-derive */
   double   guide_y, guide_h;       /* drawn, document space */
   double   guide_ty, guide_th;     /* target, chased by the smoother */
   bool     guide_anim;

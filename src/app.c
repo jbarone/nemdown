@@ -137,6 +137,8 @@ static void note_scroll_activity(struct nd_app *app) {
 
 void nd_app_scroll_by(struct nd_app *app, double dy, bool immediate) {
   note_scroll_activity(app);
+  /* Scrolling by hand hands control of the cursor back to the viewport. */
+  app->guide_pinned = false;
 
   /* The sidebar's panes scroll independently, and the wheel belongs to
    * whichever one the pointer is over. */
@@ -182,9 +184,40 @@ void nd_app_scroll_settle(struct nd_app *app) {
 /* Recomputes which stop is being read and points the marker at it. Cheap (a
  * binary search), so it runs on the paint path rather than being invalidated
  * from a dozen places. */
+/* Is stop `i` wholly inside the viewport? */
+static bool guide_whole(struct nd_app *app, int i, double top, double bot) {
+  double x, y, w, h;
+  if (i < 0 || !nd_doc_reading_rect(app->doc, (uint32_t)i, &x, &y, &w, &h))
+    return false;
+  return y >= top && y + h <= bot;
+}
+
+/* Points the marker at the cursor's block, and drags the cursor along only
+ * when free scrolling has pushed it off screen -- by the smallest number of
+ * stops that puts it back, so it never jumps across the page. Stepping with
+ * { and } pins it, because mid-flight the block it is heading for is briefly
+ * not visible and this would otherwise haul it back. */
 static void guide_sync(struct nd_app *app) {
   if (!app->doc) return;
-  int idx = nd_doc_reading_at(app->doc, app->scroll.offset, (double)app->win.h);
+  uint32_t n = nd_doc_reading_count(app->doc);
+  if (n == 0) { app->guide_idx = -1; return; }
+
+  double top = app->scroll.offset, bot = top + (double)app->win.h;
+  int idx = app->guide_idx;
+
+  if (idx < 0 || (uint32_t)idx >= n) {
+    idx = nd_doc_reading_at(app->doc, top, (double)app->win.h);
+  } else if (!app->guide_pinned && !guide_whole(app, idx, top, bot)) {
+    double x, y, w, h;
+    nd_doc_reading_rect(app->doc, (uint32_t)idx, &x, &y, &w, &h);
+    int j = idx;
+    if (y < top) while (j + 1 < (int)n && !guide_whole(app, j, top, bot)) j++;
+    else         while (j > 0 && !guide_whole(app, j, top, bot)) j--;
+    idx = guide_whole(app, j, top, bot)
+              ? j
+              : nd_doc_reading_at(app->doc, top, (double)app->win.h);
+  }
+
   app->guide_idx = idx;
   if (idx < 0) return;
 
@@ -652,7 +685,8 @@ static void reload_document(struct nd_app *app) {
   app->guide_h = 0.0;
   app->guide_th = 0.0;
   app->guide_anim = false;
-  app->guide_idx = -1;
+  app->guide_idx = 0;
+  app->guide_pinned = true;
 
   double sidebar = app->sidebar_visible ? app->sidebar_w : 0.0;
   nd_doc_layout(app->doc, (double)app->win.w - sidebar, app->font_scale);
@@ -764,7 +798,7 @@ static void guide_step(struct nd_app *app, int delta) {
 
   int idx = app->guide_idx;
   if (idx < 0) idx = nd_doc_reading_at(app->doc, app->scroll.offset,
-                                      (double)app->win.h);
+                                       (double)app->win.h);
   idx += delta;
   if (idx < 0) idx = 0;
   if ((uint32_t)idx >= n) idx = (int)n - 1;
@@ -773,10 +807,15 @@ static void guide_step(struct nd_app *app, int delta) {
   if (!nd_doc_reading_rect(app->doc, (uint32_t)idx, &x, &y, &w, &h)) return;
 
   app->guide_idx = idx;
-  /* Just under the top edge. Landing it further down would leave room above
-   * for a short preceding stop to be wholly visible too -- and that one, being
-   * first, would take the marker, so } would appear to do nothing. */
-  app->scroll.target = y - ND_GUIDE_STEP_INSET;
+  app->guide_pinned = true;
+
+  /* Centre the cursor, then let the document's own bounds clamp it. That one
+   * line is the whole behaviour: near the top the centred offset is negative
+   * and clamps to 0, so the page holds still and the marker walks down it;
+   * through the middle the page scrolls to keep the marker centred; near the
+   * end the offset exceeds the maximum and clamps there, so the page holds
+   * still again and the marker walks down to the last block. */
+  app->scroll.target = y + h / 2.0 - (double)app->win.h / 2.0;
   scroll_clamp(app);
   app->scroll.animating = true;
   note_scroll_activity(app);
@@ -985,6 +1024,8 @@ void nd_app_pointer_leave(struct nd_app *app) {
 
 void nd_app_resized(struct nd_app *app, int w, int h) {
   (void)w; (void)h;
+  /* A new height can put the cursor's block off screen. */
+  app->guide_pinned = false;
   app->dirty |= ND_DIRTY_ALL | ND_DIRTY_RELAYOUT;
 }
 
@@ -1209,7 +1250,8 @@ bool nd_app_init(struct nd_app *app, const char *path, char **err) {
   /* On by default: it is the sort of thing that only helps if it is already
    * there when you start reading. `f` turns it off. */
   app->guide_on        = true;
-  app->guide_idx       = -1;
+  app->guide_idx       = 0;      /* a document opens marked at its first block */
+  app->guide_pinned    = true;
   app->sidebar_w       = 280.0;
   app->sidebar_target  = 280.0;
   app->sidebar_pref    = 280.0;
