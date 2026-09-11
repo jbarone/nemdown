@@ -135,8 +135,60 @@ void nd_app_tick(struct nd_app *app) {
 
 /* ---- input actions ------------------------------------------------------- */
 
+/* Text entry for the search field. Returns true when the key was consumed. */
+static bool search_key(struct nd_app *app, xkb_keysym_t sym) {
+  switch (sym) {
+    case XKB_KEY_Escape:
+      app->searching = false;
+      app->query_len = 0;
+      app->query[0] = '\0';
+      nd_doc_search_clear(app->doc);
+      mark(app, ND_DIRTY_ALL);
+      return true;
+
+    case XKB_KEY_Return:
+    case XKB_KEY_KP_Enter:
+      app->searching = false; /* matches stay highlighted; n/N walk them */
+      mark(app, ND_DIRTY_ALL);
+      return true;
+
+    case XKB_KEY_BackSpace:
+      if (app->query_len) {
+        /* Step back a whole UTF-8 character, not a byte. */
+        size_t i = app->query_len - 1;
+        while (i > 0 && ((unsigned char)app->query[i] & 0xC0) == 0x80) i--;
+        app->query_len = i;
+        app->query[i] = '\0';
+        nd_doc_search(app->doc, app->query);
+      }
+      mark(app, ND_DIRTY_ALL);
+      return true;
+
+    default: {
+      if (!app->input.xkb_state) return true;
+      char buf[8];
+      int n = xkb_state_key_get_utf8(app->input.xkb_state,
+                                     app->input.last_keycode, buf, sizeof buf);
+      if (n > 0 && (unsigned char)buf[0] >= 0x20 &&
+          app->query_len + (size_t)n < sizeof app->query) {
+        memcpy(app->query + app->query_len, buf, (size_t)n);
+        app->query_len += (size_t)n;
+        app->query[app->query_len] = '\0';
+        nd_doc_search(app->doc, app->query);
+
+        double y = nd_doc_search_step(app->doc, 0, (double)app->win.h);
+        if (y >= 0) { app->scroll.target = y; app->scroll.animating = true; }
+      }
+      mark(app, ND_DIRTY_ALL);
+      return true;
+    }
+  }
+}
+
 void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat) {
   (void)is_repeat;
+
+  if (app->searching && search_key(app, sym)) return;
   double line = app->scroll.line_height;
   double page = (double)app->win.h * 0.9;
 
@@ -228,6 +280,25 @@ void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat) {
     case XKB_KEY_r:
       reload_document(app);
       break;
+
+    case XKB_KEY_slash:
+      app->searching = true;
+      app->query_len = 0;
+      app->query[0] = '\0';
+      mark(app, ND_DIRTY_ALL);
+      break;
+
+    case XKB_KEY_n:
+    case XKB_KEY_N: {
+      double y = nd_doc_search_step(app->doc, sym == XKB_KEY_N ? -1 : 1,
+                                    (double)app->win.h);
+      if (y >= 0) {
+        app->scroll.target = y;
+        app->scroll.animating = true;
+        mark(app, ND_DIRTY_ALL);
+      }
+      break;
+    }
 
     default:
       break;
@@ -513,6 +584,40 @@ void nd_app_quit(struct nd_app *app) {
 
 /* ---- painting ------------------------------------------------------------ */
 
+/* A slim bar along the bottom, shown while searching or while matches stand. */
+static void paint_search_bar(struct nd_app *app, cairo_t *cr, int w, int h,
+                             double scale) {
+  if (!app->searching && nd_doc_search_count(app->doc) == 0) return;
+
+  double bar_h = 34.0;
+  double y = (double)h - bar_h;
+
+  nd_src(cr, CTP_CRUST);
+  cairo_rectangle(cr, 0, y, w, bar_h);
+  cairo_fill(cr);
+  nd_src(cr, app->searching ? ND_ACCENT : CTP_SURFACE0);
+  cairo_rectangle(cr, 0, nd_snap(y, scale), w, 1.0 / scale);
+  cairo_fill(cr);
+
+  cairo_select_font_face(cr, ND_MONO, CAIRO_FONT_SLANT_NORMAL,
+                         CAIRO_FONT_WEIGHT_NORMAL);
+  cairo_set_font_size(cr, 13.0);
+
+  char line[192];
+  size_t n = nd_doc_search_count(app->doc);
+  int cur = nd_doc_search_current(app->doc);
+  if (n)
+    snprintf(line, sizeof line, "/%s   %d of %zu", app->query, cur + 1, n);
+  else if (app->query_len)
+    snprintf(line, sizeof line, "/%s   no matches", app->query);
+  else
+    snprintf(line, sizeof line, "/");
+
+  nd_src(cr, n || !app->query_len ? CTP_TEXT : ND_URGENT);
+  cairo_move_to(cr, 16.0, y + 22.0);
+  cairo_show_text(cr, line);
+}
+
 void nd_app_paint(struct nd_app *app, cairo_t *cr, int w, int h, double scale) {
   nd_src(cr, ND_BG_CONTENT);
   cairo_paint(cr);
@@ -552,6 +657,8 @@ void nd_app_paint(struct nd_app *app, cairo_t *cr, int w, int h, double scale) {
     cairo_rectangle(cr, nd_snap(sidebar, scale), 0, 1.0 / scale, h);
     cairo_fill(cr);
   }
+
+  paint_search_bar(app, cr, w, h, scale);
 
   cairo_save(cr);
   cairo_rectangle(cr, sidebar, 0, content_w, content_h);

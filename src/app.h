@@ -62,6 +62,12 @@ struct nd_app {
   bool     dragging;       /* divider drag is modal, see nd_app_pointer_button */
   double   drag_start_x, drag_start_w;
 
+  /* `/` opens a text field. While it is open the document keybindings are
+   * suppressed, or typing "b" would toggle the sidebar mid-query. */
+  bool     searching;
+  char     query[128];
+  size_t   query_len;
+
   bool     selecting;      /* left button held, dragging a text selection */
   uint32_t last_click_ms;
   int      click_count;

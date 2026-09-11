@@ -84,3 +84,15 @@ These were each a real bug; the comments in the code say so at the site.
   `cancel_read`** on every path, including `EINTR` and the flush retry.
 - **cursor-shape-v1's generated code references `zwp_tablet_tool_v2_interface`**,
   so `tablet-v2.xml` must stay in the protocol list or the link fails.
+- **`pango_layout_xy_to_index` writes the nearest index even when it returns
+  FALSE.** Hit testing must bounds-check the point against the layout extents
+  first, or clicks far to the right of a line activate the last link on it.
+- **Pango's `trailing` counts characters, not bytes.** Advance with
+  `g_utf8_next_char`; adding it to the index splits codepoints.
+- **Selection and search hold block pointers and indices**, so both are cleared
+  on reload and search is re-run after every layout.
+- **gdk-pixbuf has no Cairo bridge** — the premultiplied ARGB32 conversion in
+  `images.c` is hand-written because `gdk_cairo_surface_create_from_pixbuf`
+  lives in GTK.
+- **Copying yields rendered text, not markdown source.** md4c's text callback
+  carries no source offset, so the mapping does not exist.

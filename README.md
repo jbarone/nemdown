@@ -15,12 +15,19 @@ teal accent, no theme switcher.
 ## Keys
 
 ```
-j / k / arrows    scroll a line        g / G    top / bottom
-PgUp / PgDn       page                 b        toggle the sidebar
-q / Esc           quit
+j / k / arrows     scroll a line       g / G          top / bottom
+Ctrl-d / Ctrl-u    half page           PgUp / PgDn    page
+/ then n / N       search, next/prev   b              toggle the sidebar
++ / - / 0          zoom in/out/reset   r              reload
+Ctrl-C             copy                q / Esc        quit
 ```
 
-Clicking an entry in the contents pane scrolls to that heading.
+Clicking a contents entry scrolls to that heading. Clicking a link opens it;
+clicking a task checkbox toggles it **in the file**. Drag to select text,
+double-click for a word, triple-click for a block. Drag the divider to resize
+the sidebar.
+
+Esc closes the search field, then clears a selection, then quits.
 
 ## Building
 
@@ -44,8 +51,12 @@ inline and fenced code with syntax highlighting, `==highlights==`, links and
 Obsidian callouts (`> [!warning] Title`), tables with alignment, horizontal
 rules, YAML frontmatter, and `$math$` styled but not typeset.
 
-Not yet: image decoding (placeholders are drawn), text selection, `/` search,
-LaTeX typesetting, footnotes.
+Images are decoded (PNG/JPEG/GIF/BMP/TIFF via gdk-pixbuf, SVG via librsvg),
+including Obsidian's `![[img.png|400]]` size hints. Missing, unreadable and
+remote images draw a placeholder — nothing is fetched over the network.
+
+Not yet: LaTeX typesetting, footnotes, mermaid, cross-file wikilink navigation,
+WebP.
 
 ## Development tools
 

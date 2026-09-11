@@ -100,6 +100,7 @@ static void kb_key(void *data, struct wl_keyboard *kb, uint32_t serial,
 
   /* evdev -> X11 keycode offset. */
   xkb_keysym_t sym = xkb_state_key_get_one_sym(in->xkb_state, key + 8);
+  in->last_keycode = key + 8;
 
   if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
     nd_app_key(in->app, sym, false);

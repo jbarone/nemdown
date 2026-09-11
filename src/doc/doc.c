@@ -13,6 +13,7 @@
 #include "doc/layout.h"
 #include "doc/paint.h"
 #include "doc/parse.h"
+#include "doc/search.h"
 #include "doc/select.h"
 #include "doc/postprocess.h"
 #include "doc/preprocess.h"
@@ -41,6 +42,8 @@ struct nd_doc {
 
   struct nd_image_cache *images; /* outlives reparse: see images.h */
   nd_selection sel;
+  nd_matches   matches;
+  char        *needle;
 };
 
 static char *read_file(const char *path, size_t *len, char **err) {
@@ -73,6 +76,7 @@ static bool rebuild(nd_doc *d, char **err) {
   d->laid_out = false;
 
   memset(&d->sel, 0, sizeof d->sel); /* block indices die with the tree */
+  nd_search_free(&d->matches);       /* and so do match block pointers */
   nd_preprocess(&d->arena, d->raw, d->raw_len, &d->src);
 
   d->root = nd_parse(&d->arena, &d->src);
@@ -127,6 +131,8 @@ void nd_doc_free(nd_doc *d) {
   if (!d) return;
   nd_layout_free_tree(d->root);
   nd_arena_reset(&d->arena);
+  nd_search_free(&d->matches);
+  free(d->needle);
   nd_images_free(d->images);
   if (d->pctx) g_object_unref(d->pctx);
   free(d->raw);
@@ -161,6 +167,14 @@ double nd_doc_layout(nd_doc *d, double viewport_w, double font_scale) {
 
   nd_toc_refresh_offsets(&d->toc_store);
 
+  /* Matches carry y offsets and block pointers, so a reflow invalidates them. */
+  if (d->needle) {
+    int keep = d->matches.current;
+    nd_search_free(&d->matches);
+    nd_search_run(d->root, d->needle, &d->matches);
+    if (keep >= 0 && (uint32_t)keep < d->matches.count) d->matches.current = keep;
+  }
+
   d->last_viewport_w = viewport_w;
   d->last_font_scale = font_scale;
   d->laid_out = true;
@@ -178,11 +192,12 @@ void nd_doc_set_scale(nd_doc *d, double scale) {
 void nd_doc_paint(nd_doc *d, cairo_t *cr, double scroll_y, double viewport_h) {
   if (!d->laid_out) return;
 
-  /* Selection goes down first, so glyphs sit on top of it. */
-  if (d->sel.active) {
+  /* Selection and search highlights go down first, so glyphs sit on top. */
+  if (d->sel.active || d->matches.count) {
     cairo_save(cr);
     cairo_translate(cr, 0, -scroll_y);
-    nd_select_paint(cr, d->root, &d->sel);
+    if (d->sel.active) nd_select_paint(cr, d->root, &d->sel);
+    if (d->matches.count) nd_search_paint(cr, &d->matches);
     cairo_restore(cr);
   }
   nd_paint_tree(cr, d->root, scroll_y, viewport_h, d->images);
@@ -288,6 +303,39 @@ bool nd_doc_toggle_task(nd_doc *d, uint32_t source_offset, bool now_checked) {
 }
 
 struct _PangoContext *nd_doc_pango_context(const nd_doc *d) { return d->pctx; }
+
+void nd_doc_search(nd_doc *d, const char *needle) {
+  nd_search_free(&d->matches);
+  free(d->needle);
+  d->needle = needle && *needle ? strdup(needle) : NULL;
+  if (d->needle && d->laid_out) nd_search_run(d->root, d->needle, &d->matches);
+}
+
+void nd_doc_search_clear(nd_doc *d) {
+  nd_search_free(&d->matches);
+  free(d->needle);
+  d->needle = NULL;
+}
+
+size_t nd_doc_search_count(const nd_doc *d)  { return d->matches.count; }
+int    nd_doc_search_current(const nd_doc *d) { return d->matches.current; }
+
+double nd_doc_search_step(nd_doc *d, int delta, double viewport_h) {
+  if (d->matches.count == 0) return -1.0;
+
+  int n = (int)d->matches.count;
+  int cur = d->matches.current + delta;
+  while (cur < 0) cur += n;      /* wrap, so n/N cycle rather than stop */
+  cur %= n;
+  d->matches.current = cur;
+
+  double y = d->matches.items[cur].y - viewport_h / 3.0;
+  double max = d->content_h - viewport_h;
+  if (max < 0) max = 0;
+  if (y < 0) y = 0;
+  if (y > max) y = max;
+  return y;
+}
 
 const char *nd_doc_source(const nd_doc *d) { return d->raw; }
 

@@ -42,6 +42,7 @@ struct nd_input {
   int32_t  repeat_rate;  /* keys/sec; 0 disables */
   int32_t  repeat_delay; /* ms */
   uint32_t repeat_key;   /* raw wayland keycode */
+  uint32_t last_keycode; /* xkb keycode of the key being handled, for get_utf8 */
   xkb_keysym_t repeat_sym;
 
   struct nd_pointer_frame pending;

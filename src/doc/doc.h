@@ -125,6 +125,16 @@ char *nd_doc_select_text(nd_doc *d);
 /* The document's own bytes, borrowed. */
 const char *nd_doc_source(const nd_doc *d);
 
+/* ---- search ------------------------------------------------------------- */
+
+/* Re-runs over the whole document; matches are re-anchored on every layout. */
+void   nd_doc_search(nd_doc *d, const char *needle);
+void   nd_doc_search_clear(nd_doc *d);
+size_t nd_doc_search_count(const nd_doc *d);
+int    nd_doc_search_current(const nd_doc *d);
+/* Steps the active match and returns the y to scroll to, or -1. */
+double nd_doc_search_step(nd_doc *d, int delta, double viewport_h);
+
 /* ---- sidebar data ------------------------------------------------------- */
 
 /* The sidebar draws text too; sharing one context keeps font options and the
