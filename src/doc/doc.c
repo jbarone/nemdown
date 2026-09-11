@@ -20,6 +20,7 @@
 #include "doc/select.h"
 #include "doc/postprocess.h"
 #include "doc/preprocess.h"
+#include "doc/reading.h"
 #include "doc/toc.h"
 #include "doc/wikilink.h"
 #include "util/log.h"
@@ -39,6 +40,7 @@ struct nd_doc {
   PangoContext *pctx;
   double last_viewport_w;
   double last_font_scale;
+  double column_x;
   double content_h;
   bool   laid_out;
 
@@ -51,6 +53,7 @@ struct nd_doc {
   nd_selection sel;
   nd_matches   matches;
   char        *needle;
+  struct nd_reading reading;
 };
 
 /* Layout measures and retains a PangoLayout for every block, so cost is
@@ -210,6 +213,7 @@ void nd_doc_free(nd_doc *d) {
   nd_layout_free_tree(d->root);
   nd_arena_reset(&d->arena);
   nd_search_free(&d->matches);
+  nd_reading_free(&d->reading);
   free(d->needle);
   nd_images_free(d->images);
   if (d->pctx) g_object_unref(d->pctx);
@@ -244,7 +248,12 @@ double nd_doc_layout(nd_doc *d, double viewport_w, double font_scale) {
     .column_x = col_x,
     .column_w = col_w,
   };
+  d->column_x = col_x;
   d->content_h = nd_layout_tree(&ctx, d->root);
+
+  /* Pure geometry, so it is rebuilt here rather than at parse: the stops move
+   * whenever the column width does. */
+  nd_reading_build(&d->reading, d->root);
 
   nd_toc_refresh_offsets(&d->toc_store);
 
@@ -504,6 +513,7 @@ struct _PangoContext *nd_doc_pango_context(const nd_doc *d) { return d->pctx; }
 
 void nd_doc_search(nd_doc *d, const char *needle) {
   nd_search_free(&d->matches);
+  nd_reading_free(&d->reading);
   free(d->needle);
   d->needle = needle && *needle ? strdup(needle) : NULL;
   if (d->needle && d->laid_out) nd_search_run(d->root, d->needle, &d->matches);
@@ -511,6 +521,7 @@ void nd_doc_search(nd_doc *d, const char *needle) {
 
 void nd_doc_search_clear(nd_doc *d) {
   nd_search_free(&d->matches);
+  nd_reading_free(&d->reading);
   free(d->needle);
   d->needle = NULL;
 }
@@ -540,6 +551,22 @@ const char *nd_doc_source(const nd_doc *d) { return d->raw; }
 const nd_props *nd_doc_props(const nd_doc *d) { return &d->props; }
 const nd_toc   *nd_doc_toc(const nd_doc *d)   { return &d->toc; }
 const char     *nd_doc_title(const nd_doc *d) { return d->title; }
+
+uint32_t nd_doc_reading_count(const nd_doc *d) { return d->reading.n; }
+
+double nd_doc_column_x(const nd_doc *d) { return d->column_x; }
+
+bool nd_doc_reading_rect(const nd_doc *d, uint32_t i, double *x, double *y,
+                         double *w, double *h) {
+  if (i >= d->reading.n) return false;
+  const nd_para *p = &d->reading.stops[i];
+  *x = p->x; *y = p->y; *w = p->w; *h = p->h;
+  return true;
+}
+
+int nd_doc_reading_at(const nd_doc *d, double doc_y) {
+  return nd_reading_at(&d->reading, doc_y);
+}
 
 int nd_toc_active(const nd_doc *d, double scroll_y) {
   const nd_toc *t = &d->toc;

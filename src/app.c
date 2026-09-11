@@ -44,6 +44,14 @@
 /* One h/l step. Roughly three monospace characters at the default size. */
 #define ND_PAN_STEP     36.0
 
+/* The reading marker. Thin and short of the text, so it reads as a margin
+ * mark rather than a rule: the point is to answer "where was I" at a glance
+ * without competing with the words. */
+#define ND_GUIDE_W      2.0
+#define ND_GUIDE_GAP    22.0   /* left of the column */
+#define ND_GUIDE_ALPHA  0.80
+#define ND_GUIDE_TAU    0.050  /* it should arrive before you look for it */
+
 /* Scrollbars stay solid this long after the last scroll, then fade. */
 #define ND_SB_HOLD_MS   800
 #define ND_SB_FADE_TAU  0.12
@@ -60,6 +68,7 @@ static void sidebar_animate(struct nd_app *app, uint32_t time_ms);
 static void reload_document(struct nd_app *app);
 static void copy_to_clipboard(const char *text);
 static void navigate_back(struct nd_app *app);
+static void guide_step(struct nd_app *app, int delta);
 
 static void mark(struct nd_app *app, unsigned bits) {
   app->dirty |= bits;
@@ -74,7 +83,7 @@ bool nd_app_is_dirty(const struct nd_app *app) {
                 (nd_now_ms() - app->scroll_activity_ms) >= ND_SB_HOLD_MS;
 
   return app->dirty != ND_DIRTY_NONE || app->scroll.animating ||
-         app->sidebar_anim || fading;
+         app->sidebar_anim || app->guide_anim || fading;
 }
 
 void nd_app_clear_dirty(struct nd_app *app) {
@@ -168,6 +177,52 @@ void nd_app_scroll_settle(struct nd_app *app) {
   mark(app, ND_DIRTY_ALL);
 }
 
+/* Recomputes which stop is being read and points the marker at it. Cheap (a
+ * binary search), so it runs on the paint path rather than being invalidated
+ * from a dozen places. */
+static void guide_sync(struct nd_app *app) {
+  if (!app->doc) return;
+  int idx = nd_doc_reading_at(app->doc, app->scroll.offset);
+  app->guide_idx = idx;
+  if (idx < 0) return;
+
+  double x, y, w, h;
+  if (!nd_doc_reading_rect(app->doc, (uint32_t)idx, &x, &y, &w, &h)) return;
+  if (y != app->guide_ty || h != app->guide_th) {
+    app->guide_ty = y;
+    app->guide_th = h;
+    /* First placement lands instantly; only later moves are worth animating,
+     * or the marker slides in from the top of the document on open. */
+    if (app->guide_h <= 0.0) {
+      app->guide_y = y;
+      app->guide_h = h;
+    } else {
+      app->guide_anim = true;
+    }
+  }
+}
+
+static void guide_animate(struct nd_app *app, uint32_t time_ms) {
+  if (!app->guide_anim) { app->guide_last_ms = time_ms; return; }
+
+  double dt = (double)(time_ms - app->guide_last_ms) / 1000.0;
+  app->guide_last_ms = time_ms;
+  if (dt <= 0.0 || dt > 0.05) dt = 1.0 / 60.0;
+
+  double k = 1.0 - exp(-dt / ND_GUIDE_TAU);
+  app->guide_y += (app->guide_ty - app->guide_y) * k;
+  app->guide_h += (app->guide_th - app->guide_h) * k;
+
+  /* Snap and stop, or the smoother asymptotes and we never reach idle. */
+  if (fabs(app->guide_ty - app->guide_y) < 0.3 &&
+      fabs(app->guide_th - app->guide_h) < 0.3) {
+    app->guide_y = app->guide_ty;
+    app->guide_h = app->guide_th;
+    app->guide_anim = false;
+  }
+  app->dirty |= ND_DIRTY_DOC;
+}
+
 static void scrollbar_animate(struct nd_app *app, uint32_t time_ms) {
   if (app->scrollbar_alpha <= 0.0) return;
 
@@ -186,6 +241,7 @@ static void scrollbar_animate(struct nd_app *app, uint32_t time_ms) {
 void nd_app_animate(struct nd_app *app, uint32_t time_ms) {
   scrollbar_animate(app, time_ms);
   sidebar_animate(app, time_ms);
+  guide_animate(app, time_ms);
 
   struct nd_scroll *s = &app->scroll;
   if (!s->animating) { s->last_ms = time_ms; return; }
@@ -373,6 +429,20 @@ void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat) {
       app->scroll.target = app->scroll.max;
       app->scroll.animating = true;
       mark(app, ND_DIRTY_ALL);
+      break;
+
+    case XKB_KEY_f:
+      app->guide_on = !app->guide_on;
+      mark(app, ND_DIRTY_DOC);
+      break;
+
+    /* vim's paragraph motions, which is what these already mean to the hands
+     * they are aimed at. */
+    case XKB_KEY_braceright:
+      guide_step(app, +1);
+      break;
+    case XKB_KEY_braceleft:
+      guide_step(app, -1);
       break;
 
     case XKB_KEY_b:
@@ -574,6 +644,13 @@ static void reload_document(struct nd_app *app) {
    * cached hover index has to go too. */
   app->sidebar.hover_toc = -1;
   memset(&app->hover, 0, sizeof app->hover);
+  /* The stops belong to the tree that just died. Zeroing the height makes the
+   * next sync place the marker outright instead of sliding it from wherever it
+   * happened to be in the previous document. */
+  app->guide_h = 0.0;
+  app->guide_th = 0.0;
+  app->guide_anim = false;
+  app->guide_idx = -1;
 
   double sidebar = app->sidebar_visible ? app->sidebar_w : 0.0;
   nd_doc_layout(app->doc, (double)app->win.w - sidebar, app->font_scale);
@@ -672,6 +749,32 @@ static void open_external(const char *url) {
    * child has exited and reaps nothing. SIGCHLD is set to SIG_IGN in main(),
    * which makes the kernel discard the status for us. */
   posix_spawnp(&pid, "xdg-open", NULL, NULL, argv, environ);
+}
+
+/* Moves the marker a whole stop and brings it into view. The scroll lands the
+ * stop just below the top edge, which is where guide_sync would have put the
+ * marker anyway, so stepping and scrolling cannot disagree about where you
+ * are. */
+static void guide_step(struct nd_app *app, int delta) {
+  if (!app->doc) return;
+  uint32_t n = nd_doc_reading_count(app->doc);
+  if (n == 0) return;
+
+  int idx = app->guide_idx;
+  if (idx < 0) idx = nd_doc_reading_at(app->doc, app->scroll.offset);
+  idx += delta;
+  if (idx < 0) idx = 0;
+  if ((uint32_t)idx >= n) idx = (int)n - 1;
+
+  double x, y, w, h;
+  if (!nd_doc_reading_rect(app->doc, (uint32_t)idx, &x, &y, &w, &h)) return;
+
+  app->guide_idx = idx;
+  app->scroll.target = y - app->win.h * 0.12;
+  scroll_clamp(app);
+  app->scroll.animating = true;
+  note_scroll_activity(app);
+  mark(app, ND_DIRTY_ALL);
 }
 
 /* Document-space y for a window point in the content pane. */
@@ -927,6 +1030,7 @@ static void paint_search_bar(struct nd_app *app, cairo_t *cr, int w, int h,
 }
 
 void nd_app_paint(struct nd_app *app, cairo_t *cr, int w, int h, double scale) {
+  guide_sync(app);
   nd_src(cr, ND_BG_CONTENT);
   cairo_paint(cr);
 
@@ -997,6 +1101,19 @@ void nd_app_paint(struct nd_app *app, cairo_t *cr, int w, int h, double scale) {
   cairo_rectangle(cr, sidebar, 0, content_w, content_h);
   cairo_clip(cr);
   cairo_translate(cr, sidebar, 0);
+  /* Behind the text and in the margin, so it never sits on a glyph. */
+  if (app->guide_on && app->guide_idx >= 0 && app->guide_h > 0.0) {
+    double gy = app->guide_y - app->scroll.offset;
+    if (gy < content_h && gy + app->guide_h > 0) {
+      double gx = nd_doc_column_x(app->doc) - ND_GUIDE_GAP;
+      if (gx < 2.0) gx = 2.0;   /* a narrow window has no margin to spare */
+      nd_src_a(cr, ND_ACCENT, ND_GUIDE_ALPHA);
+      cairo_rectangle(cr, nd_snap(gx, scale), gy,
+                      ND_GUIDE_W, app->guide_h);
+      cairo_fill(cr);
+    }
+  }
+
   nd_doc_paint(app->doc, cr, app->scroll.offset, content_h);
 
   /* Hover feedback lives here rather than in the engine, which stays stateless
@@ -1075,6 +1192,10 @@ bool nd_app_init(struct nd_app *app, const char *path, char **err) {
   memset(app, 0, sizeof *app);
   app->running         = true;
   app->sidebar_visible = true;
+  /* On by default: it is the sort of thing that only helps if it is already
+   * there when you start reading. `f` turns it off. */
+  app->guide_on        = true;
+  app->guide_idx       = -1;
   app->sidebar_w       = 280.0;
   app->sidebar_target  = 280.0;
   app->sidebar_pref    = 280.0;

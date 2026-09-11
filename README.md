@@ -16,12 +16,17 @@ teal accent, no theme switcher.
 
 ```
 j / k / arrows     scroll a line       g / G          top / bottom
+{ / }              previous/next para  f              reading guide on/off
 h / l              pan a code fence    Backspace      back
 Ctrl-d / Ctrl-u    half page           PgUp / PgDn    page
 / then n / N       search, next/prev   b              toggle the sidebar
 + / - / 0          zoom in/out/reset   r              reload
 Ctrl-C             copy                q / Esc        quit
 ```
+
+A thin teal mark in the left margin tracks the paragraph you are on, moving
+as you scroll and stepping a whole paragraph at a time with `{` and `}`. It is
+on by default; `f` turns it off.
 
 Clicking a contents entry scrolls to that heading. Clicking a `[[wikilink]]`
 opens that note — `Backspace` goes back. Clicking a link opens it;

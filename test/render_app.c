@@ -65,6 +65,18 @@ int main(int argc, char **argv) {
   cairo_rectangle(cr, sidebar_w, 0, content_w, h);
   cairo_clip(cr);
   cairo_translate(cr, sidebar_w, 0);
+  /* The reading marker, drawn the way app.c draws it, so what this harness
+   * shows is what the window shows. */
+  int stop = nd_doc_reading_at(doc, 0);
+  double sx, sy, sw, sh;
+  if (stop >= 0 && nd_doc_reading_rect(doc, (uint32_t)stop, &sx, &sy, &sw, &sh)) {
+    double gx = nd_doc_column_x(doc) - 22.0;
+    if (gx < 2.0) gx = 2.0;
+    cairo_set_source_rgba(cr, ND_R(ND_ACCENT), ND_G(ND_ACCENT), ND_B(ND_ACCENT), 0.80);
+    cairo_rectangle(cr, gx, sy, 2.0, sh);
+    cairo_fill(cr);
+  }
+
   nd_doc_paint(doc, cr, 0, h);
   cairo_restore(cr);
 

@@ -173,6 +173,28 @@ double nd_doc_search_step(nd_doc *d, int delta, double viewport_h);
  * scale-invariance guarantee identical on both sides. */
 struct _PangoContext *nd_doc_pango_context(const nd_doc *d);
 
+/* ---- reading guide ------------------------------------------------------- */
+
+/* A flat, document-ordered list of the units a person reads one at a time --
+ * paragraphs, headings, list items, code fences, tables, callouts. The engine
+ * supplies the geometry only: which one is current, whether a marker is shown
+ * and how it moves are the shell's business, like hover. */
+uint32_t nd_doc_reading_count(const nd_doc *d);
+
+/* Left edge of the readable column, in document space. The marker uses this
+ * rather than each stop's own x: a list item is indented, and a marker that
+ * stepped sideways as you read down a list would be exactly the fidget the
+ * thing is meant to prevent. */
+double nd_doc_column_x(const nd_doc *d);
+
+/* Geometry of stop `i`, in document space. False when `i` is out of range. */
+bool nd_doc_reading_rect(const nd_doc *d, uint32_t i, double *x, double *y,
+                         double *w, double *h);
+
+/* The stop being read at a document y: the first one not yet scrolled past.
+ * Returns -1 for a document with no readable content. */
+int nd_doc_reading_at(const nd_doc *d, double doc_y);
+
 const nd_props *nd_doc_props(const nd_doc *d);
 const nd_toc   *nd_doc_toc(const nd_doc *d);
 const char     *nd_doc_title(const nd_doc *d);

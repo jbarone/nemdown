@@ -85,6 +85,15 @@ struct nd_app {
   size_t   query_len;
 
   bool     selecting;      /* left button held, dragging a text selection */
+
+  /* Reading guide: a thin marker beside the stop being read. Kept here rather
+   * than in the engine because it is a view of input state, like hover. */
+  bool     guide_on;
+  int      guide_idx;              /* current stop, -1 when none */
+  double   guide_y, guide_h;       /* drawn, document space */
+  double   guide_ty, guide_th;     /* target, chased by the smoother */
+  bool     guide_anim;
+  uint32_t guide_last_ms;
   uint32_t last_click_ms;
   int      click_count;
   double   last_click_x, last_click_y;
