@@ -7,9 +7,9 @@ can be installed at a time.
 
 ## Before publishing anything
 
-Both PKGBUILDs carry `url='https://github.com/CHANGEME/nemdown'`. That field is
-the package's **source** as well as its homepage, so it is the one value that
-must be right or nothing builds. Set it, and make the repository public.
+Both PKGBUILDs point at `https://github.com/jbarone/nemdown`. That field is the
+package's **source** as well as its homepage, so the repository has to exist
+and be public before either package builds for anyone else.
 
 ## Publishing nemdown-git
 

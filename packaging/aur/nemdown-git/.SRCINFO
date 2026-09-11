@@ -2,7 +2,7 @@ pkgbase = nemdown-git
 	pkgdesc = Native Wayland markdown viewer with Obsidian-style rendering and typeset maths (git)
 	pkgver = 0.r0.0000000
 	pkgrel = 1
-	url = https://github.com/CHANGEME/nemdown
+	url = https://github.com/jbarone/nemdown
 	arch = x86_64
 	license = MIT
 	makedepends = git
@@ -26,7 +26,7 @@ pkgbase = nemdown-git
 	optdepends = ttf-hack-nerd: the font the typography is designed around
 	provides = nemdown
 	conflicts = nemdown
-	source = nemdown-git::git+https://github.com/CHANGEME/nemdown.git
+	source = nemdown-git::git+https://github.com/jbarone/nemdown.git
 	sha256sums = SKIP
 
 pkgname = nemdown-git

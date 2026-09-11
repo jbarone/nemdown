@@ -3,9 +3,8 @@
 # Tracks tagged releases. Use `nemdown-git` to build from the repository tip.
 #
 # BEFORE PUBLISHING:
-#   1. set `url` to the repository's real public address
-#   2. tag a release (`git tag -a v0.1.0 -m ...` and push the tag)
-#   3. run `updpkgsums` to replace the sha256 placeholder below
+#   1. tag a release (`git tag -a v0.1.0 -m ...` and push the tag)
+#   2. run `updpkgsums` to replace the sha256 placeholder below
 # A published PKGBUILD whose checksum is still SKIP is one nobody can verify,
 # which is the whole point of shipping a checksum.
 
@@ -14,7 +13,7 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc='Native Wayland markdown viewer with Obsidian-style rendering and typeset maths'
 arch=('x86_64')
-url='https://github.com/CHANGEME/nemdown'
+url='https://github.com/jbarone/nemdown'
 license=('MIT')
 
 depends=('glibc' 'wayland' 'libxkbcommon' 'cairo' 'pango' 'md4c' 'libyaml'

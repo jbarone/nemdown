@@ -2,17 +2,13 @@
 #
 # Builds from the tip of the repository. Use the `nemdown` package instead if
 # you would rather track tagged releases.
-#
-# BEFORE PUBLISHING: set `url` below to the repository's real public address.
-# It is the source of the package as well as its homepage, so a wrong value
-# here is the one mistake that makes nothing build.
 
 pkgname=nemdown-git
 pkgver=0.r0.0000000
 pkgrel=1
 pkgdesc='Native Wayland markdown viewer with Obsidian-style rendering and typeset maths (git)'
 arch=('x86_64')
-url='https://github.com/CHANGEME/nemdown'
+url='https://github.com/jbarone/nemdown'
 license=('MIT')
 
 # glib2 and harfbuzz are linked directly -- glib for its UTF-8 and casefolding
