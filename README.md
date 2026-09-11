@@ -15,8 +15,8 @@ teal accent, no theme switcher.
 ## Keys
 
 ```
-j / k / arrows     scroll a line       g / G          top / bottom
-{ / }              previous/next para  f              reading guide on/off
+j / k or { / }     previous/next block g / G          first / last block
+arrows             scroll a line       f              reading guide on/off
 h / l              pan a code fence    Backspace      back
 Ctrl-d / Ctrl-u    half page           PgUp / PgDn    page
 / then n / N       search, next/prev   b              toggle the sidebar
@@ -24,12 +24,14 @@ Ctrl-d / Ctrl-u    half page           PgUp / PgDn    page
 Ctrl-C             copy                q / Esc        quit
 ```
 
-A thin teal mark in the left margin tracks the block you are on. `{` and `}`
-move it a block at a time and the page follows: it walks down a still page
+A thin teal mark in the left margin tracks the block you are on. `j` and `k`
+(or `{` and `}`) move it a block at a time and the page follows: it walks down a still page
 until it reaches the middle, then the page scrolls to keep it centred, and at
 the end of the document the page stops and it walks down to the last block.
-Scrolling by hand moves it only as far as it must to stay on screen. It is on
-by default; `f` turns it off.
+`g` and `G` take it to the first and last block. The arrows still scroll a
+line at a time without moving it, and scrolling by hand moves it only as far
+as it must to stay on screen. It is on by default; `f` turns it off — and with
+it off, `j`, `k`, `g` and `G` go back to scrolling the page.
 
 Clicking a contents entry scrolls to that heading. Clicking a `[[wikilink]]`
 opens that note — `Backspace` goes back. Clicking a link opens it;

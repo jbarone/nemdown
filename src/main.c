@@ -14,8 +14,8 @@
 static void usage(FILE *out) {
   fputs("usage: nemdown <file.md>\n"
         "\n"
-        "  j / k / arrows   scroll        g / G   top / bottom\n"
-        "  { / }            paragraph     f       reading guide on/off\n"
+        "  j / k or { / }   block         g / G   first / last block\n"
+        "  arrows           scroll        f       reading guide on/off\n"
         "  PgUp / PgDn      page          b       toggle sidebar\n"
         "  q / Esc          quit\n",
         out);

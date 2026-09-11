@@ -71,6 +71,8 @@ static void reload_document(struct nd_app *app);
 static void copy_to_clipboard(const char *text);
 static void navigate_back(struct nd_app *app);
 static void guide_step(struct nd_app *app, int delta);
+static void guide_goto(struct nd_app *app, int idx);
+static bool guide_drives(const struct nd_app *app);
 
 static void mark(struct nd_app *app, unsigned bits) {
   app->dirty |= bits;
@@ -444,9 +446,18 @@ void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat) {
       nd_app_quit(app);
       break;
 
+    /* j/k move the cursor a block; the arrows still scroll a line, so there
+     * is always a way to nudge the page without moving where you are. */
     case XKB_KEY_j:
-    case XKB_KEY_Down:  nd_app_scroll_by(app, line, false); break;
+      if (guide_drives(app)) guide_step(app, +1);
+      else                   nd_app_scroll_by(app, line, false);
+      break;
     case XKB_KEY_k:
+      if (guide_drives(app)) guide_step(app, -1);
+      else                   nd_app_scroll_by(app, -line, false);
+      break;
+
+    case XKB_KEY_Down:  nd_app_scroll_by(app, line, false); break;
     case XKB_KEY_Up:    nd_app_scroll_by(app, -line, false); break;
 
     case XKB_KEY_Page_Down: nd_app_scroll_by(app, page, false); break;
@@ -454,6 +465,9 @@ void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat) {
 
     case XKB_KEY_g:
     case XKB_KEY_Home:
+      /* Taking the cursor along, or the page jumps to the top and the marker
+       * is left behind at whatever block the viewport happens to pull it to. */
+      if (guide_drives(app)) { guide_goto(app, 0); break; }
       app->scroll.target = 0.0;
       app->scroll.animating = true;
       mark(app, ND_DIRTY_ALL);
@@ -461,6 +475,10 @@ void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat) {
 
     case XKB_KEY_G:
     case XKB_KEY_End:
+      if (guide_drives(app)) {
+        guide_goto(app, (int)nd_doc_reading_count(app->doc) - 1);
+        break;
+      }
       app->scroll.target = app->scroll.max;
       app->scroll.animating = true;
       mark(app, ND_DIRTY_ALL);
@@ -791,15 +809,11 @@ static void open_external(const char *url) {
  * stop just below the top edge, which is where guide_sync would have put the
  * marker anyway, so stepping and scrolling cannot disagree about where you
  * are. */
-static void guide_step(struct nd_app *app, int delta) {
+/* Puts the cursor on a specific stop and lets the page follow. */
+static void guide_goto(struct nd_app *app, int idx) {
   if (!app->doc) return;
   uint32_t n = nd_doc_reading_count(app->doc);
   if (n == 0) return;
-
-  int idx = app->guide_idx;
-  if (idx < 0) idx = nd_doc_reading_at(app->doc, app->scroll.offset,
-                                       (double)app->win.h);
-  idx += delta;
   if (idx < 0) idx = 0;
   if ((uint32_t)idx >= n) idx = (int)n - 1;
 
@@ -820,6 +834,20 @@ static void guide_step(struct nd_app *app, int delta) {
   app->scroll.animating = true;
   note_scroll_activity(app);
   mark(app, ND_DIRTY_ALL);
+}
+
+static void guide_step(struct nd_app *app, int delta) {
+  if (!app->doc) return;
+  int idx = app->guide_idx;
+  if (idx < 0) idx = nd_doc_reading_at(app->doc, app->scroll.offset,
+                                       (double)app->win.h);
+  guide_goto(app, idx + delta);
+}
+
+/* True when the cursor is the thing that should move. With the guide switched
+ * off there is nothing on screen to follow, so the keys go back to scrolling. */
+static bool guide_drives(const struct nd_app *app) {
+  return app->guide_on && app->doc && nd_doc_reading_count(app->doc) > 0;
 }
 
 /* Document-space y for a window point in the content pane. */
