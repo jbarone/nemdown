@@ -20,6 +20,7 @@ pkgbase = nemdown
 	depends = librsvg
 	depends = glib2
 	depends = harfbuzz
+	depends = hicolor-icon-theme
 	optdepends = wl-clipboard: copying selected text and code fences
 	optdepends = otf-stix: typeset maths (any font with an OpenType MATH table works)
 	optdepends = otf-latinmodern-math: typeset maths, Computer Modern instead of STIX

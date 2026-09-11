@@ -1,6 +1,6 @@
 pkgbase = nemdown-git
 	pkgdesc = Native Wayland markdown viewer: Obsidian rendering, typeset maths, mermaid (git)
-	pkgver = 0.r0.0000000
+	pkgver = 0.1.0.r0.gd0a68d8
 	pkgrel = 1
 	url = https://github.com/jbarone/nemdown
 	arch = x86_64
@@ -21,6 +21,7 @@ pkgbase = nemdown-git
 	depends = librsvg
 	depends = glib2
 	depends = harfbuzz
+	depends = hicolor-icon-theme
 	optdepends = wl-clipboard: copying selected text and code fences
 	optdepends = otf-stix: typeset maths (any font with an OpenType MATH table works)
 	optdepends = otf-latinmodern-math: typeset maths, Computer Modern instead of STIX

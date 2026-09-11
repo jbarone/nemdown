@@ -16,8 +16,12 @@ arch=('x86_64')
 url='https://github.com/jbarone/nemdown'
 license=('MIT')
 
+# hicolor-icon-theme owns the /usr/share/icons/hicolor hierarchy the launcher
+# icon is installed into. A package that writes into a directory tree it does
+# not depend on is a namcap error, and rightly so: install it alone and the
+# icon lands in a tree nothing else created.
 depends=('glibc' 'wayland' 'libxkbcommon' 'cairo' 'pango' 'md4c' 'libyaml'
-         'gdk-pixbuf2' 'librsvg' 'glib2' 'harfbuzz')
+         'gdk-pixbuf2' 'librsvg' 'glib2' 'harfbuzz' 'hicolor-icon-theme')
 makedepends=('clang' 'wayland-protocols' 'pkgconf')
 # Only for check(): check_mermaid exercises the graph dialects through graphviz,
 # and without it those cases would silently be skipped rather than tested.

@@ -4,7 +4,7 @@
 # you would rather track tagged releases.
 
 pkgname=nemdown-git
-pkgver=0.r0.0000000
+pkgver=0.1.0.r0.gd0a68d8
 pkgrel=1
 pkgdesc='Native Wayland markdown viewer: Obsidian rendering, typeset maths, mermaid (git)'
 arch=('x86_64')
@@ -14,8 +14,12 @@ license=('MIT')
 # glib2 and harfbuzz are linked directly -- glib for its UTF-8 and casefolding
 # helpers, harfbuzz for the OpenType MATH table the maths typesetter reads --
 # so they are listed even though pango would pull both in anyway.
+# hicolor-icon-theme owns the /usr/share/icons/hicolor hierarchy the launcher
+# icon is installed into. A package that writes into a directory tree it does
+# not depend on is a namcap error, and rightly so: install it alone and the
+# icon lands in a tree nothing else created.
 depends=('glibc' 'wayland' 'libxkbcommon' 'cairo' 'pango' 'md4c' 'libyaml'
-         'gdk-pixbuf2' 'librsvg' 'glib2' 'harfbuzz')
+         'gdk-pixbuf2' 'librsvg' 'glib2' 'harfbuzz' 'hicolor-icon-theme')
 makedepends=('git' 'clang' 'wayland-protocols' 'pkgconf')
 # Only for check(): check_mermaid exercises the graph dialects through graphviz,
 # and without it those cases would silently be skipped rather than tested.
