@@ -14,9 +14,17 @@
 
 /* A compositor may advertise a newer version than we understand. Binding above
  * what we were generated against is a protocol error that kills the client, so
- * every bind clamps. */
+ * every bind clamps.
+ *
+ * The early return covers the other direction: a compositor is free to
+ * advertise the same global twice, and binding it again would overwrite the
+ * proxy and leak the first. For wl_seat that is worse than a leak -- two sets
+ * of listeners would point at one struct nd_input, so capabilities from the
+ * second seat can release the first seat's keyboard. Returning also skips the
+ * add_listener calls that follow a bind. */
 #define ND_MIN(a, b) ((a) < (b) ? (a) : (b))
 #define BIND(field, iface, want) \
+  if (wl->field) return; \
   wl->field = wl_registry_bind(reg, name, &iface##_interface, \
                                ND_MIN(version, (want)))
 
@@ -36,6 +44,7 @@ static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
 
   if (strcmp(iface, wl_compositor_interface.name) == 0) {
     BIND(compositor, wl_compositor, 6);
+    wl->compositor_version = ND_MIN(version, 6);
   } else if (strcmp(iface, wl_shm_interface.name) == 0) {
     BIND(shm, wl_shm, 1);
   } else if (strcmp(iface, xdg_wm_base_interface.name) == 0) {
@@ -43,7 +52,7 @@ static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
     xdg_wm_base_add_listener(wl->wm_base, &wm_base_listener, wl);
   } else if (strcmp(iface, wl_seat_interface.name) == 0) {
     BIND(seat, wl_seat, 9);
-    nd_input_bind_seat(wl->app, wl->seat);
+    nd_input_bind_seat(wl->app, wl->seat, ND_MIN(version, 9));
   } else if (strcmp(iface, wp_viewporter_interface.name) == 0) {
     BIND(viewporter, wp_viewporter, 1);
   } else if (strcmp(iface, wp_fractional_scale_manager_v1_interface.name) == 0) {
@@ -89,6 +98,17 @@ bool nd_wl_connect(struct nd_wl *wl, struct nd_app *app, char **err) {
                          wl->compositor ? "" : " wl_compositor",
                          wl->shm ? "" : " wl_shm",
                          wl->wm_base ? "" : " xdg_wm_base");
+    return false;
+  }
+
+  /* Clamping only bounds the version from above. We also depend on requests
+   * that do not exist at version 1: wl_surface.damage_buffer arrived in
+   * wl_compositor 4 and set_buffer_scale in 3. libwayland does not check an
+   * opcode against the proxy's version, so on an older compositor these are a
+   * fatal protocol error with no message rather than a missing feature. */
+  if (wl->compositor_version < 4) {
+    *err = nd_strdup_fmt("wl_compositor version %u is too old; 4 or newer is "
+                         "required", wl->compositor_version);
     return false;
   }
 

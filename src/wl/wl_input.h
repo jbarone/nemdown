@@ -33,6 +33,7 @@ struct nd_input {
   struct nd_app *app;
 
   struct wl_seat     *seat;
+  uint32_t            seat_version; /* gates the release destructors */
   struct wl_keyboard *kb;
   struct wl_pointer  *pointer;
 
@@ -60,7 +61,8 @@ struct nd_input {
 
 bool nd_input_init(struct nd_input *in, struct nd_app *app);
 void nd_input_finish(struct nd_input *in);
-void nd_input_bind_seat(struct nd_app *app, struct wl_seat *seat);
+void nd_input_bind_seat(struct nd_app *app, struct wl_seat *seat,
+                        uint32_t version);
 void nd_input_repeat_tick(struct nd_app *app);
 
 #endif /* NEMDOWN_WL_INPUT_H */

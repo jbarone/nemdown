@@ -10,6 +10,7 @@
 #include <stdint.h>
 
 struct nd_app;
+struct nd_input;
 
 typedef enum {
   ND_CURSOR_DEFAULT,
@@ -21,5 +22,10 @@ typedef enum {
 /* No-op when the shape is already set: issuing a request per motion event
  * would be a round trip for nothing. */
 void nd_cursor_set(struct nd_app *app, nd_cursor shape);
+
+/* Drop the shape device. Must be called before the wl_pointer it was made
+ * from goes away, and at teardown; the device goes inert with the pointer and
+ * a stale one silently stops applying shapes. */
+void nd_cursor_release(struct nd_input *in);
 
 #endif /* NEMDOWN_WL_CURSOR_H */

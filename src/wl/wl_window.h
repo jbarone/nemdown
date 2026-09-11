@@ -29,6 +29,7 @@ struct nd_window {
   int    pending_w, pending_h; /* from xdg_toplevel.configure */
   double scale;                /* 1.0, 1.25, 1.5, ... */
   int    buf_w, buf_h;         /* device size the buffers were built at */
+  double buf_scale;            /* and the scale baked into their Cairo surfaces */
 
   bool configured;
   bool frame_pending;

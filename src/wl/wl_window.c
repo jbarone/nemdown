@@ -71,13 +71,19 @@ static void render(struct nd_window *win) {
     int bh = (int)lround(win->h * win->scale);
     if (bw > ND_MAX_DEV) bw = ND_MAX_DEV;
     if (bh > ND_MAX_DEV) bh = ND_MAX_DEV;
-    if (bw != win->buf_w || bh != win->buf_h) {
+    /* The scale has to be part of the test, not just the device size. Cairo's
+     * device scale is baked into the buffer at creation, so 2000x1600@1.0
+     * becoming 1000x800@2.0 gives identical bw/bh, skips the realloc, and
+     * leaves the surface at the old scale while paint is told the new one --
+     * the document renders into a quarter of the window. */
+    if (bw != win->buf_w || bh != win->buf_h || win->scale != win->buf_scale) {
       if (!nd_buffers_realloc(&win->bufs, win->app->wl.shm, bw, bh, win->scale)) {
         nd_warn("buffer allocation failed");
         return;
       }
       win->buf_w = bw;
       win->buf_h = bh;
+      win->buf_scale = win->scale;
     }
     win->need_realloc = false;
   }
@@ -103,6 +109,12 @@ static void render(struct nd_window *win) {
   wl_surface_attach(win->surface, b->wl, 0, 0);
   wl_surface_damage_buffer(win->surface, 0, 0, INT32_MAX, INT32_MAX);
 
+  /* xdg_surface.configure calls render() unconditionally -- it must, having
+   * acked -- so this can run with a callback already outstanding. Overwriting
+   * the pointer would strand the old one: frame_done destroys its own argument
+   * and NULLs the field, dropping the newer callback, and they accumulate
+   * while a compositor repeats configures. Destroy before replacing. */
+  if (win->frame_cb) wl_callback_destroy(win->frame_cb);
   win->frame_cb = wl_surface_frame(win->surface);
   wl_callback_add_listener(win->frame_cb, &frame_listener, win);
   win->frame_pending = true;

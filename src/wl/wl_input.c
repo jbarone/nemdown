@@ -50,6 +50,24 @@ void nd_input_repeat_tick(struct nd_app *app) {
     nd_app_key(app, in->repeat_sym, true);
 }
 
+/* wl_keyboard.release and wl_pointer.release are the correct destructors, but
+ * they only exist from wl_seat version 3. Sending one to an older compositor
+ * is a fatal protocol error, so fall back to destroying the proxy locally --
+ * which leaks the server-side object, but only at teardown or on unplug. */
+static void kb_destroy(struct nd_input *in) {
+  if (!in->kb) return;
+  if (in->seat_version >= 3) wl_keyboard_release(in->kb);
+  else                       wl_keyboard_destroy(in->kb);
+  in->kb = NULL;
+}
+
+static void ptr_destroy(struct nd_input *in) {
+  if (!in->pointer) return;
+  if (in->seat_version >= 3) wl_pointer_release(in->pointer);
+  else                       wl_pointer_destroy(in->pointer);
+  in->pointer = NULL;
+}
+
 /* ---- keyboard ------------------------------------------------------------ */
 
 static void kb_keymap(void *data, struct wl_keyboard *kb, uint32_t format,
@@ -227,7 +245,13 @@ static void ptr_axis_discrete(void *data, struct wl_pointer *p, uint32_t axis,
   /* Deprecated since seat v8, but it is what older compositors send. */
   if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL && !in->pending.have_v120) {
     in->pending.have_v120 = true;
-    in->pending.v120      = discrete * 120;
+    /* discrete is straight off the wire and 120 detents in one frame is
+     * already absurd, but `discrete * 120` overflows int32 above 17,895,697 --
+     * undefined, and the sanitizer build would abort on it. Saturate. */
+    int64_t d = (int64_t)discrete * 120;
+    if (d > INT32_MAX) d = INT32_MAX;
+    if (d < INT32_MIN) d = INT32_MIN;
+    in->pending.v120      = (int32_t)d;
   }
 }
 
@@ -321,8 +345,7 @@ static void seat_capabilities(void *data, struct wl_seat *seat, uint32_t caps) {
     in->kb = wl_seat_get_keyboard(seat);
     wl_keyboard_add_listener(in->kb, &kb_listener, in);
   } else if (!kb && in->kb) {
-    wl_keyboard_release(in->kb); /* the destructor request, not _destroy */
-    in->kb = NULL;
+    kb_destroy(in);
     repeat_disarm(in);
   }
 
@@ -331,8 +354,14 @@ static void seat_capabilities(void *data, struct wl_seat *seat, uint32_t caps) {
     in->pointer = wl_seat_get_pointer(seat);
     wl_pointer_add_listener(in->pointer, &ptr_listener, in);
   } else if (!ptr && in->pointer) {
-    wl_pointer_release(in->pointer);
-    in->pointer = NULL;
+    /* The cursor-shape device is made from this pointer and goes inert with it
+     * (cursor-shape-v1.xml: "when the pointer capability is removed ... the
+     * object becomes inert"). Keeping the stale handle is not a protocol error,
+     * it is worse -- after a mouse is unplugged and replugged the cursor
+     * silently never changes shape again, because nd_cursor_set finds a
+     * non-NULL device and reuses the dead one. */
+    nd_cursor_release(in);
+    ptr_destroy(in);
   }
 }
 
@@ -345,9 +374,11 @@ static const struct wl_seat_listener seat_listener = {
   .name         = seat_name,
 };
 
-void nd_input_bind_seat(struct nd_app *app, struct wl_seat *seat) {
+void nd_input_bind_seat(struct nd_app *app, struct wl_seat *seat,
+                        uint32_t version) {
   struct nd_input *in = &app->input;
   in->seat = seat;
+  in->seat_version = version;
   wl_seat_add_listener(seat, &seat_listener, in);
 }
 
@@ -361,8 +392,9 @@ bool nd_input_init(struct nd_input *in, struct nd_app *app) {
 }
 
 void nd_input_finish(struct nd_input *in) {
-  if (in->kb)      wl_keyboard_release(in->kb);
-  if (in->pointer) wl_pointer_release(in->pointer);
+  nd_cursor_release(in);
+  kb_destroy(in);
+  ptr_destroy(in);
   xkb_state_unref(in->xkb_state);
   xkb_keymap_unref(in->xkb_keymap);
   if (in->xkb_ctx) xkb_context_unref(in->xkb_ctx);

@@ -32,6 +32,10 @@ struct nd_wl {
   struct wp_cursor_shape_manager_v1     *cursor_mgr;
   struct zxdg_decoration_manager_v1     *deco_mgr;
 
+  /* Bound versions, kept because a request that postdates the bound version is
+   * a fatal protocol error rather than a no-op. */
+  uint32_t compositor_version;
+
   struct nd_app *app; /* back-pointer for listeners */
 };
 

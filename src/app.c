@@ -10,6 +10,7 @@
 #include <string.h>
 #include <spawn.h>
 #include <sys/inotify.h>
+#include <sys/mman.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -231,10 +232,19 @@ void nd_app_tick(struct nd_app *app) {
     reload_document(app);
   }
   /* The hold expiring is what starts the fade; without this the bars would sit
-   * solid until some other event happened to request a frame. */
+   * solid until some other event happened to request a frame.
+   *
+   * Dropping alpha below 1.0 here is what makes this deadline self-clearing,
+   * like the two above. next_deadline reports it only while alpha is exactly
+   * 1.0, and only the frame callback lowers alpha -- so if frames stop arriving
+   * while the bar is solid (nothing composited, or both buffers stuck busy),
+   * the deadline stays permanently in the past and nd_app_poll_timeout returns
+   * 0 forever. That is the 100%-CPU spin. The fade itself stays frame-driven. */
   if (app->scrollbar_alpha >= 1.0 && app->scroll_activity_ms &&
-      nd_now_ms() - app->scroll_activity_ms >= ND_SB_HOLD_MS)
+      nd_now_ms() - app->scroll_activity_ms >= ND_SB_HOLD_MS) {
+    app->scrollbar_alpha = 0.999;
     app->dirty |= ND_DIRTY_ALL;
+  }
   if (nd_app_is_dirty(app)) nd_window_damage(&app->win);
 }
 
@@ -583,30 +593,35 @@ static void reload_document(struct nd_app *app) {
 static void copy_to_clipboard(const char *text) {
   if (!text || !*text) return;
 
-  int fds[2];
-  if (pipe(fds) != 0) return;
+  /* A memfd, not a pipe. A pipe holds 64KB, and Ctrl-C with no selection copies
+   * the whole document -- up to 32MB, and the document is not ours. Writing
+   * that through a pipe blocks the main loop until wl-copy drains it, and a
+   * loop that is not running is not answering xdg_wm_base.ping, which is how
+   * Hyprland decides a client is hung. A memfd takes the whole payload without
+   * blocking, and wl-copy reads it as stdin at its own pace after we are gone. */
+  size_t len = strlen(text);
+  int fd = memfd_create("nemdown-copy", MFD_CLOEXEC);
+  if (fd < 0) { nd_warn("memfd_create failed"); return; }
+
+  for (size_t off = 0; off < len; ) {
+    ssize_t n = write(fd, text + off, len - off);
+    if (n <= 0) { nd_warn("could not stage the clipboard payload"); close(fd); return; }
+    off += (size_t)n;
+  }
+  if (lseek(fd, 0, SEEK_SET) != 0) { close(fd); return; }
 
   posix_spawn_file_actions_t fa;
   posix_spawn_file_actions_init(&fa);
-  posix_spawn_file_actions_adddup2(&fa, fds[0], STDIN_FILENO);
-  posix_spawn_file_actions_addclose(&fa, fds[1]);
+  posix_spawn_file_actions_adddup2(&fa, fd, STDIN_FILENO);
 
   char *argv[] = {(char *)"wl-copy", NULL};
   extern char **environ;
   pid_t pid;
   int rc = posix_spawnp(&pid, "wl-copy", &fa, NULL, argv, environ);
   posix_spawn_file_actions_destroy(&fa);
-  close(fds[0]);
+  close(fd);
 
-  if (rc != 0) { close(fds[1]); nd_warn("wl-copy not available"); return; }
-
-  size_t len = strlen(text), off = 0;
-  while (off < len) {
-    ssize_t n = write(fds[1], text + off, len - off);
-    if (n <= 0) break;
-    off += (size_t)n;
-  }
-  close(fds[1]);
+  if (rc != 0) nd_warn("wl-copy not available");
   /* wl-copy daemonises to own the selection; do not wait for it. */
 }
 
@@ -622,6 +637,18 @@ static bool url_scheme_allowed(const char *url) {
   return false;
 }
 
+/* A scheme we allow does not make the rest of the string safe. `<https://x/ --f>`
+ * is a single link destination as far as md4c is concerned, and a raw newline
+ * survives the same way, so an allowlisted URL can still carry a space or a
+ * control character into an argv element. This xdg-open happens to quote its
+ * arguments, but that is a property of the script on this machine, not a
+ * guarantee we hold -- so make it local. */
+static bool url_bytes_safe(const char *url) {
+  for (const unsigned char *p = (const unsigned char *)url; *p; p++)
+    if (*p < 0x21 || *p == 0x7F) return false;
+  return true;
+}
+
 /* posix_spawn with an argv array, never a shell string: a document can contain
  * any URL it likes and none of it should reach a shell. */
 static void open_external(const char *url) {
@@ -631,6 +658,10 @@ static void open_external(const char *url) {
   if (url[0] == '-' || !url_scheme_allowed(url)) {
     nd_warn("refusing to open '%s': only http, https and mailto links are followed",
             url);
+    return;
+  }
+  if (!url_bytes_safe(url)) {
+    nd_warn("refusing to open a link containing whitespace or control characters");
     return;
   }
 
