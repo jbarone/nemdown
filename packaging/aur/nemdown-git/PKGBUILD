@@ -32,11 +32,18 @@ sha256sums=('SKIP')
 
 pkgver() {
   cd "$pkgname"
-  # No tags yet, so this is commit-count.hash and sorts correctly regardless.
-  # Once versions are tagged it picks them up without further editing.
-  git describe --long --tags 2>/dev/null \
-    | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' \
-    || printf '0.r%s.%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+  # An if, not `describe || printf`: the fallback has to hang off the describe
+  # itself, because in a pipeline the || binds to the LAST command. With no
+  # tags yet, describe fails, sed succeeds on empty input, and makepkg refuses
+  # the empty version it is handed.
+  local tag
+  if tag=$(git describe --long --tags 2>/dev/null); then
+    printf '%s' "$tag" | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+  else
+    # Commit count first so it sorts correctly, and keeps sorting correctly
+    # once tags arrive and the branch above takes over.
+    printf '0.r%s.%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+  fi
 }
 
 build() {
