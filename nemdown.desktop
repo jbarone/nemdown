@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=nemdown
+Comment=Native Wayland markdown viewer
+Exec=nemdown %f
+Terminal=false
+NoDisplay=true
+MimeType=text/markdown;text/x-markdown;
+Categories=Utility;TextEditor;

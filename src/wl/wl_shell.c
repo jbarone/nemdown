@@ -12,13 +12,13 @@
 #include "wl/wl_input.h"
 #include "wl/wl_window.h"
 
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
-
 /* A compositor may advertise a newer version than we understand. Binding above
  * what we were generated against is a protocol error that kills the client, so
  * every bind clamps. */
+#define ND_MIN(a, b) ((a) < (b) ? (a) : (b))
 #define BIND(field, iface, want) \
-  wl->field = wl_registry_bind(reg, name, &iface##_interface, MIN(version, (want)))
+  wl->field = wl_registry_bind(reg, name, &iface##_interface, \
+                               ND_MIN(version, (want)))
 
 static void wm_base_ping(void *data, struct xdg_wm_base *base, uint32_t serial) {
   (void)data;

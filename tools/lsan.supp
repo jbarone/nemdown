@@ -1,0 +1,15 @@
+# LeakSanitizer suppressions for nemdown.
+#
+# GLib, Pango and fontconfig keep process-lifetime caches (font maps, shaper
+# tables, config) that are never freed by design. Without these, `make asan`
+# reports them on every run and the real signal gets lost.
+
+leak:libglib-2.0
+leak:libgobject-2.0
+leak:libpango
+leak:libpangocairo
+leak:libfontconfig
+leak:libfreetype
+leak:libharfbuzz
+leak:libcairo
+leak:libgio-2.0
