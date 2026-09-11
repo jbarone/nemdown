@@ -4,6 +4,13 @@ A native Wayland markdown viewer for Hyprland, written in C. No Electron, no
 browser engine, no toolkit — `libwayland-client` + xdg-shell + `wl_shm`, with
 Cairo and Pango doing the drawing.
 
+![nemdown showing a document's frontmatter properties and table of contents in
+the sidebar, with callouts, syntax-highlighted code, a table and typeset
+mathematics in the reading pane](art/screenshot.png)
+
+*Frontmatter properties and contents in the sidebar; Obsidian callouts,
+syntax highlighting, tables and typeset LaTeX in the page. Catppuccin Mocha.*
+
 ```
 nemdown file.md
 ```
