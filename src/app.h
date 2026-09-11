@@ -53,7 +53,15 @@ struct nd_app {
   unsigned dirty;
   bool     running;
   bool     sidebar_visible;
-  double   sidebar_w;
+  double   sidebar_w;      /* animated current width; 0 when fully collapsed */
+  double   sidebar_target; /* where the toggle animation is heading */
+  double   sidebar_pref;   /* user's chosen width, preserved across toggles */
+  bool     sidebar_anim;
+  uint32_t sidebar_last_ms;
+
+  bool     dragging;       /* divider drag is modal, see nd_app_pointer_button */
+  double   drag_start_x, drag_start_w;
+
   double   font_scale;
 };
 
@@ -69,6 +77,7 @@ void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat);
 void nd_app_pointer_motion(struct nd_app *app, double x, double y);
 void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed);
 void nd_app_pointer_leave(struct nd_app *app);
+void nd_app_zoom(struct nd_app *app, double scale);
 void nd_app_scroll_by(struct nd_app *app, double dy, bool immediate);
 void nd_app_scroll_settle(struct nd_app *app);
 void nd_app_animate(struct nd_app *app, uint32_t time_ms);

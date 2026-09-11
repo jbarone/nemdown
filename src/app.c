@@ -26,7 +26,18 @@
 
 #define ND_INOTIFY_DEBOUNCE_MS 50
 
+/* A 1px divider is unhittable, especially at fractional scale, so the grab
+ * strip is padded well past what is drawn. */
+#define ND_DIVIDER_GRAB 8.0
+#define ND_SIDEBAR_MIN  180.0
+#define ND_SIDEBAR_MAX  520.0
+#define ND_SIDEBAR_TAU  0.045
+#define ND_ZOOM_MIN     0.7
+#define ND_ZOOM_MAX     2.0
+
 static void scroll_clamp(struct nd_app *app);
+static void sidebar_animate(struct nd_app *app, uint32_t time_ms);
+static void reload_document(struct nd_app *app);
 
 static void mark(struct nd_app *app, unsigned bits) {
   app->dirty |= bits;
@@ -34,7 +45,8 @@ static void mark(struct nd_app *app, unsigned bits) {
 }
 
 bool nd_app_is_dirty(const struct nd_app *app) {
-  return app->dirty != ND_DIRTY_NONE || app->scroll.animating;
+  return app->dirty != ND_DIRTY_NONE || app->scroll.animating ||
+         app->sidebar_anim;
 }
 
 void nd_app_clear_dirty(struct nd_app *app) {
@@ -79,6 +91,8 @@ void nd_app_scroll_settle(struct nd_app *app) {
 }
 
 void nd_app_animate(struct nd_app *app, uint32_t time_ms) {
+  sidebar_animate(app, time_ms);
+
   struct nd_scroll *s = &app->scroll;
   if (!s->animating) { s->last_ms = time_ms; return; }
 
@@ -93,6 +107,23 @@ void nd_app_animate(struct nd_app *app, uint32_t time_ms) {
   if (fabs(s->target - s->offset) < ND_SCROLL_SNAP) {
     s->offset    = s->target;
     s->animating = false;
+  }
+  app->dirty |= ND_DIRTY_ALL;
+}
+
+static void sidebar_animate(struct nd_app *app, uint32_t time_ms) {
+  if (!app->sidebar_anim) { app->sidebar_last_ms = time_ms; return; }
+
+  double dt = (double)(time_ms - app->sidebar_last_ms) / 1000.0;
+  app->sidebar_last_ms = time_ms;
+  if (dt <= 0.0 || dt > 0.05) dt = 1.0 / 60.0;
+
+  double k = 1.0 - exp(-dt / ND_SIDEBAR_TAU);
+  app->sidebar_w += (app->sidebar_target - app->sidebar_w) * k;
+
+  if (fabs(app->sidebar_target - app->sidebar_w) < 0.5) {
+    app->sidebar_w = app->sidebar_target;
+    app->sidebar_anim = false;
   }
   app->dirty |= ND_DIRTY_ALL;
 }
@@ -138,12 +169,53 @@ void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat) {
 
     case XKB_KEY_b:
       app->sidebar_visible = !app->sidebar_visible;
+      app->sidebar_target = app->sidebar_visible ? app->sidebar_pref : 0.0;
+      app->sidebar_anim = true;
       mark(app, ND_DIRTY_ALL | ND_DIRTY_RELAYOUT);
+      break;
+
+    case XKB_KEY_plus:
+    case XKB_KEY_equal:
+    case XKB_KEY_KP_Add:
+      nd_app_zoom(app, app->font_scale + 0.1);
+      break;
+
+    case XKB_KEY_minus:
+    case XKB_KEY_KP_Subtract:
+      nd_app_zoom(app, app->font_scale - 0.1);
+      break;
+
+    case XKB_KEY_0:
+    case XKB_KEY_KP_0:
+      nd_app_zoom(app, 1.0);
+      break;
+
+    case XKB_KEY_r:
+      reload_document(app);
       break;
 
     default:
       break;
   }
+}
+
+void nd_app_zoom(struct nd_app *app, double scale) {
+  if (scale < ND_ZOOM_MIN) scale = ND_ZOOM_MIN;
+  if (scale > ND_ZOOM_MAX) scale = ND_ZOOM_MAX;
+  if (scale == app->font_scale) return;
+
+  /* Hold the reader's place: zooming changes every block height, so a raw
+   * pixel offset would land somewhere unrelated. */
+  uint64_t anchor = nd_doc_anchor_at(app->doc, app->scroll.offset);
+  app->font_scale = scale;
+  app->scroll.line_height = 23.0 * scale;
+
+  double sidebar = app->sidebar_w;
+  nd_doc_layout(app->doc, (double)app->win.w - sidebar, app->font_scale);
+  app->scroll.offset = nd_doc_y_for_anchor(app->doc, anchor);
+  app->scroll.target = app->scroll.offset;
+
+  mark(app, ND_DIRTY_ALL | ND_DIRTY_RELAYOUT);
 }
 
 /* Reloads from disk, holding the reader's place. */
@@ -198,6 +270,34 @@ static double content_x(const struct nd_app *app, double x) {
 void nd_app_pointer_motion(struct nd_app *app, double x, double y) {
   if (!app->doc) return;
 
+  /* Drag is modal: while it is running, nothing else is hit-tested. Otherwise
+   * a fast drag outruns the divider and the hit test loses track of it. */
+  if (app->dragging) {
+    double w = app->drag_start_w + (x - app->drag_start_x);
+    double cap = (double)app->win.w - 360.0;
+    if (cap > ND_SIDEBAR_MAX) cap = ND_SIDEBAR_MAX;
+    if (w < ND_SIDEBAR_MIN) w = ND_SIDEBAR_MIN;
+    if (w > cap) w = cap;
+
+    app->sidebar_w = app->sidebar_target = app->sidebar_pref = w;
+    /* Layout is not called here — only from the render path — so a burst of
+     * motion events coalesces into one reflow per frame. */
+    mark(app, ND_DIRTY_ALL | ND_DIRTY_RELAYOUT);
+    nd_cursor_set(app, ND_CURSOR_COL_RESIZE);
+    return;
+  }
+
+  bool on_divider = app->sidebar_visible &&
+                    fabs(x - app->sidebar_w) <= ND_DIVIDER_GRAB;
+  if (on_divider) {
+    nd_cursor_set(app, ND_CURSOR_COL_RESIZE);
+    if (app->sidebar.hover_toc != -1) {
+      app->sidebar.hover_toc = -1;
+      mark(app, ND_DIRTY_SIDEBAR);
+    }
+    return;
+  }
+
   bool in_sidebar = app->sidebar_visible && x < app->sidebar_w;
 
   int toc_hover = -1;
@@ -229,7 +329,19 @@ void nd_app_pointer_motion(struct nd_app *app, double x, double y) {
 }
 
 void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed) {
-  if (!pressed || !app->doc) return;
+  if (!app->doc) return;
+
+  if (!pressed) {
+    app->dragging = false;
+    return;
+  }
+
+  if (app->sidebar_visible && fabs(x - app->sidebar_w) <= ND_DIVIDER_GRAB) {
+    app->dragging = true;
+    app->drag_start_x = x;
+    app->drag_start_w = app->sidebar_w;
+    return;
+  }
 
   if (app->sidebar_visible && x < app->sidebar_w) {
     int idx = nd_sidebar_toc_at(&app->sidebar, app->sidebar_w,
@@ -334,7 +446,7 @@ void nd_app_paint(struct nd_app *app, cairo_t *cr, int w, int h, double scale) {
     cairo_restore(cr);
 
     /* Snapped, or a 1px rule straddles a half device pixel at 1.5x and blurs. */
-    nd_src(cr, ND_DIVIDER);
+    nd_src(cr, app->dragging ? ND_ACCENT : ND_DIVIDER);
     cairo_rectangle(cr, nd_snap(sidebar, scale), 0, 1.0 / scale, h);
     cairo_fill(cr);
   }
@@ -386,10 +498,13 @@ bool nd_app_init(struct nd_app *app, const char *path, char **err) {
   app->running         = true;
   app->sidebar_visible = true;
   app->sidebar_w       = 280.0;
+  app->sidebar_target  = 280.0;
+  app->sidebar_pref    = 280.0;
   app->font_scale      = 1.0;
   app->watch_fd        = -1;
   app->watch_wd        = -1;
-  app->scroll.line_height = 26.0;
+  /* Matches the body line height, so `j`/`k` move exactly one line. */
+  app->scroll.line_height = 23.0;
   app->scroll.max         = 2000.0; /* placeholder until layout reports it */
   app->dirty              = ND_DIRTY_ALL | ND_DIRTY_RELAYOUT;
 
