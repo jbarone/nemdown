@@ -4,6 +4,7 @@
 
 #include <libgen.h>
 #include <math.h>
+#include <time.h>
 #include <stdlib.h>
 #include <string.h>
 #include <spawn.h>
@@ -35,6 +36,16 @@
 #define ND_ZOOM_MIN     0.7
 #define ND_ZOOM_MAX     2.0
 
+/* How long the copy button shows a tick instead of its usual glyph. */
+#define ND_COPIED_MS    900
+
+/* Monotonic milliseconds, matching the units the frame callback reports. */
+static uint32_t nd_now_ms(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (uint32_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+}
+
 static void scroll_clamp(struct nd_app *app);
 static void sidebar_animate(struct nd_app *app, uint32_t time_ms);
 static void reload_document(struct nd_app *app);
@@ -57,8 +68,15 @@ void nd_app_clear_dirty(struct nd_app *app) {
 int nd_app_poll_timeout(const struct nd_app *app) {
   /* Animation is paced by frame callbacks, not by the poll timeout, so there
    * is nothing to wake up for while it runs. Returning 0 here is the classic
-   * way to burn a core doing nothing. */
-  (void)app;
+   * way to burn a core doing nothing.
+   *
+   * The sole exception is the copy confirmation, which has to clear itself
+   * with no further input to trigger a frame. */
+  if (app->copied_until_ms) {
+    uint32_t now = nd_now_ms();
+    if (now >= app->copied_until_ms) return 0;
+    return (int)(app->copied_until_ms - now);
+  }
   return -1;
 }
 
@@ -130,6 +148,10 @@ static void sidebar_animate(struct nd_app *app, uint32_t time_ms) {
 }
 
 void nd_app_tick(struct nd_app *app) {
+  if (app->copied_until_ms && nd_now_ms() >= app->copied_until_ms) {
+    app->copied_until_ms = 0;
+    app->dirty |= ND_DIRTY_DOC;
+  }
   if (nd_app_is_dirty(app)) nd_window_damage(&app->win);
 }
 
@@ -464,14 +486,16 @@ void nd_app_pointer_motion(struct nd_app *app, double x, double y) {
   if (!in_sidebar)
     nd_doc_hit_test(app->doc, content_x(app, x), content_y(app, y), &hit);
 
-  if (hit.kind != app->hover.kind || hit.url != app->hover.url) {
+  if (hit.kind != app->hover.kind || hit.url != app->hover.url ||
+      hit.x != app->hover.x || hit.y != app->hover.y) {
     app->hover = hit;
     mark(app, ND_DIRTY_DOC);
   }
 
   nd_cursor shape = ND_CURSOR_DEFAULT;
   if (toc_hover >= 0) shape = ND_CURSOR_POINTER;
-  else if (hit.kind == ND_HIT_LINK || hit.kind == ND_HIT_CHECKBOX)
+  else if (hit.kind == ND_HIT_LINK || hit.kind == ND_HIT_CHECKBOX ||
+           hit.kind == ND_HIT_CODE_COPY)
     shape = ND_CURSOR_POINTER;
   nd_cursor_set(app, shape);
 }
@@ -519,8 +543,11 @@ void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed,
   double cx = content_x(app, x), cy = content_y(app, y);
 
   nd_hit hit;
-  if (!nd_doc_hit_test(app->doc, cx, cy, &hit)) {
-    /* Nothing actionable under the pointer: begin a text selection. */
+  bool got = nd_doc_hit_test(app->doc, cx, cy, &hit);
+
+  /* ND_HIT_CODE means "inside a fence but not on its button" — that is not an
+   * action, and selecting code by dragging is worth keeping. */
+  if (!got || hit.kind == ND_HIT_CODE) {
     if (app->click_count == 2)      nd_doc_select_word(app->doc, cx, cy);
     else if (app->click_count >= 3) nd_doc_select_block(app->doc, cx, cy);
     else {
@@ -544,6 +571,19 @@ void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed,
       if (nd_doc_toggle_task(app->doc, hit.source_offset, !hit.checked))
         reload_document(app);
       break;
+
+    case ND_HIT_CODE_COPY: {
+      char *text = strndup(hit.text ? hit.text : "", hit.text_len);
+      if (text) {
+        copy_to_clipboard(text);
+        free(text);
+      }
+      app->copied_until_ms = nd_now_ms() + ND_COPIED_MS;
+      app->copied_x = hit.x;
+      app->copied_y = hit.y;
+      mark(app, ND_DIRTY_DOC);
+      break;
+    }
 
     case ND_HIT_WIKILINK:
       /* Single-file viewer: styled as a link, but there is nowhere to go. */
@@ -674,6 +714,41 @@ void nd_app_paint(struct nd_app *app, cairo_t *cr, int w, int h, double scale) {
     cairo_rectangle(cr, app->hover.x, nd_snap(hy, scale),
                     app->hover.w, 1.0 / scale);
     cairo_fill(cr);
+  }
+
+  /* The copy button: drawn only while its fence is hovered, and by the shell
+   * rather than the engine, which knows nothing about the pointer. */
+  if (app->hover.kind == ND_HIT_CODE || app->hover.kind == ND_HIT_CODE_COPY) {
+    bool armed = app->hover.kind == ND_HIT_CODE_COPY;
+    double bx = app->hover.x;
+    double by = app->hover.y - app->scroll.offset;
+    double s = app->hover.w;
+
+    cairo_new_sub_path(cr);
+    double r = 6.0;
+    cairo_arc(cr, bx + s - r, by + r,     r, -G_PI / 2, 0);
+    cairo_arc(cr, bx + s - r, by + s - r, r, 0,          G_PI / 2);
+    cairo_arc(cr, bx + r,     by + s - r, r, G_PI / 2,   G_PI);
+    cairo_arc(cr, bx + r,     by + r,     r, G_PI,       3 * G_PI / 2);
+    cairo_close_path(cr);
+
+    nd_src(cr, armed ? CTP_SURFACE2 : CTP_SURFACE0);
+    cairo_fill_preserve(cr);
+    nd_src_a(cr, CTP_SURFACE2, armed ? 1.0 : 0.6);
+    cairo_set_line_width(cr, 1.0);
+    cairo_stroke(cr);
+
+    bool flashing = app->copied_until_ms != 0 &&
+                    fabs(app->copied_x - bx) < 1.0 &&
+                    fabs(app->copied_y - app->hover.y) < 1.0;
+
+    nd_src(cr, flashing ? CTP_GREEN : (armed ? CTP_TEAL : CTP_OVERLAY1));
+    cairo_select_font_face(cr, ND_SANS, CAIRO_FONT_SLANT_NORMAL,
+                           CAIRO_FONT_WEIGHT_NORMAL);
+    cairo_set_font_size(cr, 12.0);
+    cairo_move_to(cr, bx + 5.5, by + 16.0);
+    /* U+F0C5 copy, U+F00C check — both inside Hack Nerd Font's icon range. */
+    cairo_show_text(cr, flashing ? "\xEF\x80\x8C" : "\xEF\x83\x85");
   }
   cairo_restore(cr);
 }

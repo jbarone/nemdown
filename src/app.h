@@ -50,6 +50,10 @@ struct nd_app {
   struct nd_sidebar sidebar;
 
   nd_hit   hover;      /* what the pointer is over, in document space */
+  /* A copy button flashes a tick for a moment after use, so the click is
+   * visibly acknowledged. This is the one thing that needs a timed wake-up. */
+  uint32_t copied_until_ms;
+  double   copied_x, copied_y;
   unsigned dirty;
   bool     running;
   bool     sidebar_visible;

@@ -81,7 +81,39 @@ static bool hit_text(nd_block *b, double x, double y, nd_hit *out) {
   return true;
 }
 
+/* Top-right of the code panel. The language label sits top-LEFT, so they never
+ * collide. Kept here rather than in the painter so hit area and drawn area
+ * cannot drift apart. */
+#define ND_COPY_BTN   22.0
+#define ND_COPY_INSET  8.0
+
+static void copy_button_rect(const nd_block *b, double *bx, double *by) {
+  *bx = b->lay.x + b->lay.w - ND_COPY_INSET - ND_COPY_BTN;
+  *by = b->lay.y + ND_COPY_INSET;
+}
+
+static bool hit_code(nd_block *b, double x, double y, nd_hit *out) {
+  if (b->kind != ND_CODE) return false;
+  if (x < b->lay.x || x > b->lay.x + b->lay.w) return false;
+  if (y < b->lay.y || y > b->lay.y + b->lay.h) return false;
+
+  double bx, by;
+  copy_button_rect(b, &bx, &by);
+
+  bool on_button = x >= bx && x <= bx + ND_COPY_BTN &&
+                   y >= by && y <= by + ND_COPY_BTN;
+
+  out->kind = on_button ? ND_HIT_CODE_COPY : ND_HIT_CODE;
+  out->text = b->code_text;
+  out->text_len = b->code_len;
+  out->x = bx; out->y = by;
+  out->w = ND_COPY_BTN; out->h = ND_COPY_BTN;
+  return true;
+}
+
 static bool hit_block(nd_block *b, double x, double y, nd_hit *out) {
+  if (b->kind == ND_CODE) return hit_code(b, x, y, out);
+
   if (b->kind == ND_ITEM && hit_checkbox(b, x, y, out)) return true;
 
   if (b->kind == ND_IMAGE && b->lay.img_w > 0 &&

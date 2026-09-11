@@ -66,7 +66,10 @@ typedef struct {
 
 typedef enum {
   ND_HIT_NONE, ND_HIT_LINK, ND_HIT_WIKILINK, ND_HIT_CHECKBOX,
-  ND_HIT_IMAGE, ND_HIT_TEXT
+  ND_HIT_IMAGE, ND_HIT_TEXT,
+  /* Over a code block, and over its copy button specifically. The button is
+   * only drawn on hover, so the shell needs to know about the former too. */
+  ND_HIT_CODE, ND_HIT_CODE_COPY
 } nd_hit_kind;
 
 typedef struct {
@@ -74,7 +77,11 @@ typedef struct {
   const char *url;
   uint32_t    source_offset; /* ND_HIT_CHECKBOX: byte to flip in the file */
   bool        checked;
-  double      x, y, w, h;    /* document space, for the shell's hover paint */
+  const char *text;          /* ND_HIT_CODE*: the fence's contents */
+  uint32_t    text_len;
+  /* Document space. For ND_HIT_CODE* this is the BUTTON's rect, not the
+   * block's, so the geometry lives in one place and the shell just draws it. */
+  double      x, y, w, h;
 } nd_hit;
 
 /* ---- lifecycle ---------------------------------------------------------- */

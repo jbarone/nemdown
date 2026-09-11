@@ -23,7 +23,8 @@ Ctrl-C             copy                q / Esc        quit
 ```
 
 Clicking a contents entry scrolls to that heading. Clicking a link opens it;
-clicking a task checkbox toggles it **in the file**. Drag to select text,
+clicking a task checkbox toggles it **in the file**. Hovering a code fence
+reveals a copy button in its top-right corner. Drag to select text,
 double-click for a word, triple-click for a block. Drag the divider to resize
 the sidebar.
 
