@@ -17,7 +17,7 @@ arch=('x86_64')
 url='https://github.com/CHANGEME/nemdown'
 license=('MIT')
 
-depends=('wayland' 'libxkbcommon' 'cairo' 'pango' 'md4c' 'libyaml'
+depends=('glibc' 'wayland' 'libxkbcommon' 'cairo' 'pango' 'md4c' 'libyaml'
          'gdk-pixbuf2' 'librsvg' 'glib2' 'harfbuzz')
 makedepends=('clang' 'wayland-protocols' 'pkgconf')
 optdepends=('wl-clipboard: copying selected text and code fences'
@@ -39,5 +39,8 @@ check() {
 
 package() {
   cd "$pkgname-$pkgver"
-  make PREFIX=/usr DESTDIR="$pkgdir" install
+  # LICENSEDIR follows the PACKAGE name: namcap requires the MIT text under
+  # /usr/share/licenses/$pkgname, which differs from the project name here.
+  make PREFIX=/usr LICENSEDIR="/usr/share/licenses/$pkgname" \
+       DESTDIR="$pkgdir" install
 }

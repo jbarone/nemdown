@@ -18,7 +18,7 @@ license=('MIT')
 # glib2 and harfbuzz are linked directly -- glib for its UTF-8 and casefolding
 # helpers, harfbuzz for the OpenType MATH table the maths typesetter reads --
 # so they are listed even though pango would pull both in anyway.
-depends=('wayland' 'libxkbcommon' 'cairo' 'pango' 'md4c' 'libyaml'
+depends=('glibc' 'wayland' 'libxkbcommon' 'cairo' 'pango' 'md4c' 'libyaml'
          'gdk-pixbuf2' 'librsvg' 'glib2' 'harfbuzz')
 makedepends=('git' 'clang' 'wayland-protocols' 'pkgconf')
 optdepends=('wl-clipboard: copying selected text and code fences'
@@ -62,5 +62,8 @@ check() {
 
 package() {
   cd "$pkgname"
-  make PREFIX=/usr DESTDIR="$pkgdir" install
+  # LICENSEDIR follows the PACKAGE name: namcap requires the MIT text under
+  # /usr/share/licenses/$pkgname, which differs from the project name here.
+  make PREFIX=/usr LICENSEDIR="/usr/share/licenses/$pkgname" \
+       DESTDIR="$pkgdir" install
 }

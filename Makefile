@@ -14,6 +14,10 @@
 
 PREFIX  ?= /usr/local
 DESTDIR ?=
+# Overridable because a package's licence directory has to match the PACKAGE
+# name, not the project's: the AUR's nemdown-git installs the same files under
+# a different name, and a mismatch is a namcap error.
+LICENSEDIR ?= $(PREFIX)/share/licenses/nemdown
 MODE    ?= debug
 
 # CC is a Make built-in with a default value, so `?=` would never override it.
@@ -176,13 +180,13 @@ install: release
 	install -Dm644 README.md $(DESTDIR)$(PREFIX)/share/doc/nemdown/README.md
 	# MIT is not in /usr/share/licenses/common, so the text has to ship: an
 	# Arch package without it fails namcap, and the licence requires it anyway.
-	install -Dm644 LICENSE $(DESTDIR)$(PREFIX)/share/licenses/nemdown/LICENSE
+	install -Dm644 LICENSE $(DESTDIR)$(LICENSEDIR)/LICENSE
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/nemdown \
 	      $(DESTDIR)$(PREFIX)/share/applications/nemdown.desktop
 	rm -rf $(DESTDIR)$(PREFIX)/share/doc/nemdown \
-	       $(DESTDIR)$(PREFIX)/share/licenses/nemdown
+	       $(DESTDIR)$(LICENSEDIR)
 
 clean:
 	rm -rf build compile_commands.json
