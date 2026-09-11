@@ -35,6 +35,10 @@ static struct nd_arena_chunk *chunk_new(size_t need) {
 
 void *nd_arena_alloc(struct nd_arena *a, size_t n) {
   if (n == 0) n = 1;
+  /* The rounding below wraps to 0 for n near SIZE_MAX, which would hand back a
+   * zero-byte block the caller then writes through. Not reachable from a
+   * document today, but the guard is free. */
+  if (n > SIZE_MAX - ND_ARENA_ALIGN) nd_die("allocation too large");
   n = (n + ND_ARENA_ALIGN - 1) & ~(size_t)(ND_ARENA_ALIGN - 1);
 
   if (!a->head || a->head->used + n > a->head->cap) {

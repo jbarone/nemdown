@@ -6,6 +6,7 @@
 #include <math.h>
 #include <time.h>
 #include <stdlib.h>
+#include <strings.h>
 #include <string.h>
 #include <spawn.h>
 #include <sys/inotify.h>
@@ -597,17 +598,37 @@ static void copy_to_clipboard(const char *text) {
   /* wl-copy daemonises to own the selection; do not wait for it. */
 }
 
+/* xdg-open dispatches any `scheme:` it recognises to x-scheme-handler/<scheme>,
+ * and treats a bare path as a file to mime-dispatch. A document we did not
+ * write should not be able to reach arbitrary desktop handlers, or to name a
+ * local file that happens to sit next to it, on a single click. Only the
+ * schemes a markdown document has any business using are allowed through. */
+static bool url_scheme_allowed(const char *url) {
+  static const char *ok[] = {"http://", "https://", "mailto:", NULL};
+  for (const char **p = ok; *p; p++)
+    if (strncasecmp(url, *p, strlen(*p)) == 0) return true;
+  return false;
+}
+
 /* posix_spawn with an argv array, never a shell string: a document can contain
  * any URL it likes and none of it should reach a shell. */
 static void open_external(const char *url) {
   if (!url || !*url) return;
+
+  /* A leading '-' would be read by xdg-open as an option, not a URL. */
+  if (url[0] == '-' || !url_scheme_allowed(url)) {
+    nd_warn("refusing to open '%s': only http, https and mailto links are followed",
+            url);
+    return;
+  }
+
   char *argv[] = {(char *)"xdg-open", (char *)url, NULL};
   extern char **environ;
   pid_t pid;
-  if (posix_spawnp(&pid, "xdg-open", NULL, NULL, argv, environ) == 0) {
-    /* Reap without blocking; xdg-open forks and returns promptly. */
-    waitpid(pid, NULL, WNOHANG);
-  }
+  /* No reaping here: WNOHANG immediately after a spawn returns before the
+   * child has exited and reaps nothing. SIGCHLD is set to SIG_IGN in main(),
+   * which makes the kernel discard the status for us. */
+  posix_spawnp(&pid, "xdg-open", NULL, NULL, argv, environ);
 }
 
 /* Document-space y for a window point in the content pane. */

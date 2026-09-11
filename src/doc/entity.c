@@ -86,7 +86,10 @@ int nd_entity_decode(const char *src, size_t n, char out[8]) {
         if (cp > 0x10FFFF) return 0;
       }
     }
-    if (cp == 0) cp = 0xFFFD;
+    /* Surrogates are not encodable in UTF-8. Letting them through would put
+     * invalid bytes back into the tree AFTER the file-level scrub, from a
+     * document that is pure ASCII on disk. */
+    if (cp == 0 || (cp >= 0xD800 && cp <= 0xDFFF)) cp = 0xFFFD;
     return utf8_encode(cp, out);
   }
 

@@ -12,7 +12,9 @@
 
 struct nd_image_cache;
 
-struct nd_image_cache *nd_images_new(const char *base_dir);
+/* `root_dir` bounds what a document may reference: paths resolving outside it
+ * are treated as missing, and draw the placeholder. */
+struct nd_image_cache *nd_images_new(const char *base_dir, const char *root_dir);
 void nd_images_free(struct nd_image_cache *c);
 
 /* Resolution-dependent surfaces are dropped when the display scale changes. */

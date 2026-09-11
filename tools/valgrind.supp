@@ -1,0 +1,290 @@
+# Process-lifetime caches in GLib, fontconfig, Pango, cairo and friends.
+# Suppressed so real findings in nemdown's own code are not buried.
+{
+   libglib-2.0.so*-Leak
+   Memcheck:Leak
+   ...
+   obj:*/libglib-2.0.so*
+}
+{
+   libglib-2.0.so*-Addr8
+   Memcheck:Addr8
+   ...
+   obj:*/libglib-2.0.so*
+}
+{
+   libglib-2.0.so*-Cond
+   Memcheck:Cond
+   ...
+   obj:*/libglib-2.0.so*
+}
+{
+   libglib-2.0.so*-Value8
+   Memcheck:Value8
+   ...
+   obj:*/libglib-2.0.so*
+}
+{
+   libgobject-2.0.so*-Leak
+   Memcheck:Leak
+   ...
+   obj:*/libgobject-2.0.so*
+}
+{
+   libgobject-2.0.so*-Addr8
+   Memcheck:Addr8
+   ...
+   obj:*/libgobject-2.0.so*
+}
+{
+   libgobject-2.0.so*-Cond
+   Memcheck:Cond
+   ...
+   obj:*/libgobject-2.0.so*
+}
+{
+   libgobject-2.0.so*-Value8
+   Memcheck:Value8
+   ...
+   obj:*/libgobject-2.0.so*
+}
+{
+   libfontconfig.so*-Leak
+   Memcheck:Leak
+   ...
+   obj:*/libfontconfig.so*
+}
+{
+   libfontconfig.so*-Addr8
+   Memcheck:Addr8
+   ...
+   obj:*/libfontconfig.so*
+}
+{
+   libfontconfig.so*-Cond
+   Memcheck:Cond
+   ...
+   obj:*/libfontconfig.so*
+}
+{
+   libfontconfig.so*-Value8
+   Memcheck:Value8
+   ...
+   obj:*/libfontconfig.so*
+}
+{
+   libfreetype.so*-Leak
+   Memcheck:Leak
+   ...
+   obj:*/libfreetype.so*
+}
+{
+   libfreetype.so*-Addr8
+   Memcheck:Addr8
+   ...
+   obj:*/libfreetype.so*
+}
+{
+   libfreetype.so*-Cond
+   Memcheck:Cond
+   ...
+   obj:*/libfreetype.so*
+}
+{
+   libfreetype.so*-Value8
+   Memcheck:Value8
+   ...
+   obj:*/libfreetype.so*
+}
+{
+   libpango-1.0.so*-Leak
+   Memcheck:Leak
+   ...
+   obj:*/libpango-1.0.so*
+}
+{
+   libpango-1.0.so*-Addr8
+   Memcheck:Addr8
+   ...
+   obj:*/libpango-1.0.so*
+}
+{
+   libpango-1.0.so*-Cond
+   Memcheck:Cond
+   ...
+   obj:*/libpango-1.0.so*
+}
+{
+   libpango-1.0.so*-Value8
+   Memcheck:Value8
+   ...
+   obj:*/libpango-1.0.so*
+}
+{
+   libpangocairo-1.0.so*-Leak
+   Memcheck:Leak
+   ...
+   obj:*/libpangocairo-1.0.so*
+}
+{
+   libpangocairo-1.0.so*-Addr8
+   Memcheck:Addr8
+   ...
+   obj:*/libpangocairo-1.0.so*
+}
+{
+   libpangocairo-1.0.so*-Cond
+   Memcheck:Cond
+   ...
+   obj:*/libpangocairo-1.0.so*
+}
+{
+   libpangocairo-1.0.so*-Value8
+   Memcheck:Value8
+   ...
+   obj:*/libpangocairo-1.0.so*
+}
+{
+   libcairo.so*-Leak
+   Memcheck:Leak
+   ...
+   obj:*/libcairo.so*
+}
+{
+   libcairo.so*-Addr8
+   Memcheck:Addr8
+   ...
+   obj:*/libcairo.so*
+}
+{
+   libcairo.so*-Cond
+   Memcheck:Cond
+   ...
+   obj:*/libcairo.so*
+}
+{
+   libcairo.so*-Value8
+   Memcheck:Value8
+   ...
+   obj:*/libcairo.so*
+}
+{
+   libharfbuzz.so*-Leak
+   Memcheck:Leak
+   ...
+   obj:*/libharfbuzz.so*
+}
+{
+   libharfbuzz.so*-Addr8
+   Memcheck:Addr8
+   ...
+   obj:*/libharfbuzz.so*
+}
+{
+   libharfbuzz.so*-Cond
+   Memcheck:Cond
+   ...
+   obj:*/libharfbuzz.so*
+}
+{
+   libharfbuzz.so*-Value8
+   Memcheck:Value8
+   ...
+   obj:*/libharfbuzz.so*
+}
+{
+   libgdk_pixbuf-2.0.so*-Leak
+   Memcheck:Leak
+   ...
+   obj:*/libgdk_pixbuf-2.0.so*
+}
+{
+   libgdk_pixbuf-2.0.so*-Addr8
+   Memcheck:Addr8
+   ...
+   obj:*/libgdk_pixbuf-2.0.so*
+}
+{
+   libgdk_pixbuf-2.0.so*-Cond
+   Memcheck:Cond
+   ...
+   obj:*/libgdk_pixbuf-2.0.so*
+}
+{
+   libgdk_pixbuf-2.0.so*-Value8
+   Memcheck:Value8
+   ...
+   obj:*/libgdk_pixbuf-2.0.so*
+}
+{
+   librsvg-2.so*-Leak
+   Memcheck:Leak
+   ...
+   obj:*/librsvg-2.so*
+}
+{
+   librsvg-2.so*-Addr8
+   Memcheck:Addr8
+   ...
+   obj:*/librsvg-2.so*
+}
+{
+   librsvg-2.so*-Cond
+   Memcheck:Cond
+   ...
+   obj:*/librsvg-2.so*
+}
+{
+   librsvg-2.so*-Value8
+   Memcheck:Value8
+   ...
+   obj:*/librsvg-2.so*
+}
+{
+   libgio-2.0.so*-Leak
+   Memcheck:Leak
+   ...
+   obj:*/libgio-2.0.so*
+}
+{
+   libgio-2.0.so*-Addr8
+   Memcheck:Addr8
+   ...
+   obj:*/libgio-2.0.so*
+}
+{
+   libgio-2.0.so*-Cond
+   Memcheck:Cond
+   ...
+   obj:*/libgio-2.0.so*
+}
+{
+   libgio-2.0.so*-Value8
+   Memcheck:Value8
+   ...
+   obj:*/libgio-2.0.so*
+}
+{
+   ld-linux-x86-64.so*-Leak
+   Memcheck:Leak
+   ...
+   obj:*/ld-linux-x86-64.so*
+}
+{
+   ld-linux-x86-64.so*-Addr8
+   Memcheck:Addr8
+   ...
+   obj:*/ld-linux-x86-64.so*
+}
+{
+   ld-linux-x86-64.so*-Cond
+   Memcheck:Cond
+   ...
+   obj:*/ld-linux-x86-64.so*
+}
+{
+   ld-linux-x86-64.so*-Value8
+   Memcheck:Value8
+   ...
+   obj:*/ld-linux-x86-64.so*
+}

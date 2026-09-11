@@ -59,7 +59,7 @@ void nd_toc_build(struct nd_arena *a, nd_block *root,
 
     while (sp > 0 && stack[sp - 1] >= level) sp--;
     store->items[i].depth = (uint8_t)sp;
-    if (sp < (int)(sizeof stack)) stack[sp++] = level;
+    if (sp < (int)(sizeof stack / sizeof stack[0])) stack[sp++] = level;
 
     store->items[i].level = level;
     store->items[i].text  = h->inl.text ? h->inl.text : "";

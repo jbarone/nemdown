@@ -3,6 +3,7 @@
  * Usage: nemdown <file.md>
  */
 
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +29,16 @@ int main(int argc, char **argv) {
     usage(stdout);
     return 0;
   }
+
+  /* We write to a pipe feeding wl-copy. If that process is absent, wedged, or
+   * exits early, the default SIGPIPE disposition would kill us mid-copy — and
+   * the payload size is document-controlled, since Ctrl-C with no selection
+   * copies the whole source. Take the EPIPE return instead. */
+  signal(SIGPIPE, SIG_IGN);
+
+  /* Both spawn sites fire and forget. Without this every copy and every link
+   * click leaves a zombie for the life of the process. */
+  signal(SIGCHLD, SIG_IGN);
 
   struct nd_app app;
   char *err = NULL;

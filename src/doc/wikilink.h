@@ -13,7 +13,8 @@
 
 /* Resolves every wikilink run against `dir`, rewriting href to an absolute
  * path when the file exists and flagging it dead when it does not. */
-void nd_wikilink_resolve_tree(struct nd_arena *a, nd_block *root, const char *dir);
+void nd_wikilink_resolve_tree(struct nd_arena *a, nd_block *root,
+                              const char *dir, const char *root_dir);
 
 /* Splits `note#heading` into a path and an anchor. Returns the arena-owned
  * path; *anchor points into it, or NULL. */

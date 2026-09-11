@@ -33,6 +33,10 @@ tools/            lsan.supp
 - Headless engine checks: `make test`.
 - Memory: `make asan`, then run with `LSAN_OPTIONS=suppressions=$PWD/tools/lsan.supp`.
   Without the suppressions, fontconfig's process-lifetime caches bury the signal.
+- Also `make valgrind`. It complements the sanitizers rather than duplicating
+  them — no recompilation, and it catches uninitialised reads ASan does not.
+  Note librsvg's Rust runtime reports "possibly lost" interior pointers that
+  are not ours, which is why the target narrows `--errors-for-leak-kinds`.
 - Look at rendering without a compositor: `build/render_app file.md out.png 1100 900`.
 - Inspect parser behaviour before trusting it: `build/dump_md4c` and `build/dump_tree`.
 - Protocol debugging: `WAYLAND_DEBUG=1 ./build/debug/nemdown file.md`.
@@ -57,6 +61,24 @@ by a PNG harness with no display attached.
 - Two-space indentation, no tabs. LF, final newline, no trailing whitespace.
 - `-std=c11` with `-D_GNU_SOURCE`; clang is the compiler.
 - Commits are atomic, with a prose body explaining *why*.
+
+## Security posture
+
+Markdown opened here may not have been written by the person reading it, so the
+document body, its frontmatter, every path and URL it names, and the contents
+of any image it references are all untrusted input. Three rules follow:
+
+- **Document-supplied paths are confined to the tree** the first document was
+  opened from (`src/doc/pathguard.c`, via `realpath`). Wikilinks and image
+  sources that escape it resolve as missing. The containment root is fixed at
+  open and never widened by navigation, or one hop would hand the next document
+  the whole filesystem.
+- **Only http, https and mailto links are opened.** xdg-open dispatches any
+  `scheme:` to a registered handler and treats a bare path as a file, so
+  anything else is refused rather than handed to the desktop.
+- **Bytes are scrubbed to well-formed UTF-8 at load** (`src/util/utf8.c`). The
+  scrub is length-preserving on purpose: the checkbox write indexes the real
+  file by byte, so a replacement that changed length would retarget it.
 
 ## Things that are easy to get wrong
 
@@ -96,5 +118,11 @@ These were each a real bug; the comments in the code say so at the site.
   lives in GTK.
 - **Wikilink anchors arrive as written (`#Some Heading`) but slugs are
   normalised**, so `nd_doc_anchor_y` slugifies its argument before matching.
+- **Pango's valid-UTF-8 precondition is not advisory.** `pango_get_log_attrs()`
+  loops forever on a buffer ending mid-sequence — one stray byte froze the
+  whole viewer on a double-click. Hence the load-time scrub.
+- **A silently-declined push must have its matching pop declined too.** This
+  bit the block stack (an out-of-bounds write) and the span stack (vanishing
+  links). Both count declines now.
 - **Copying yields rendered text, not markdown source.** md4c's text callback
   carries no source offset, so the mapping does not exist.

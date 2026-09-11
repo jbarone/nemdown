@@ -282,7 +282,10 @@ uint32_t nd_highlight(struct nd_arena *a, const char *lang, const char *src,
     /* Shell/perl-style sigils. */
     if ((L->flags & LANG_SIGIL_DOLLAR) && c == '$') {
       uint32_t j = i + 1;
-      if (j < len && src[j] == '{') { while (j < len && src[j] != '}') j++; j++; }
+      if (j < len && src[j] == '{') {
+        while (j < len && src[j] != '}') j++;
+        if (j < len) j++; /* an unclosed ${ would otherwise run past the end */
+      }
       else while (j < len && ident_cont(src[j])) j++;
       emit(&sp, i, j, TK_PROPERTY);
       i = j;

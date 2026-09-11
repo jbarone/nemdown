@@ -69,6 +69,11 @@ struct builder {
 
   struct span_frame spans[MAX_SPAN_DEPTH];
   int       spsp;
+  /* Spans declined because the stack was full. leave_span already guards
+   * spsp <= 0 so this was never memory-unsafe, but without the counter a
+   * close pops the wrong frame and a link nested deeply enough simply
+   * vanishes instead of being clickable. */
+  int       span_overflow;
 
   nd_block *leaf;       /* where text() appends; NULL inside containers */
   nd_block *img_alt;    /* image currently collecting its alt text, if any */
@@ -134,6 +139,7 @@ static void inl_begin(struct builder *b) {
   b->text.len = 0;
   b->runs.len = 0;
   b->spsp = 0;
+  b->span_overflow = 0;
   b->first_break = 0;
 }
 
@@ -371,7 +377,7 @@ static int leave_block(MD_BLOCKTYPE type, void *detail, void *ud) {
 
 static int enter_span(MD_SPANTYPE type, void *detail, void *ud) {
   struct builder *b = ud;
-  if (b->spsp >= MAX_SPAN_DEPTH) return 0;
+  if (b->spsp >= MAX_SPAN_DEPTH) { b->span_overflow++; return 0; }
 
   struct span_frame *f = &b->spans[b->spsp];
   f->flags = 0;
@@ -431,6 +437,7 @@ static int enter_span(MD_SPANTYPE type, void *detail, void *ud) {
 static int leave_span(MD_SPANTYPE type, void *detail, void *ud) {
   (void)type; (void)detail;
   struct builder *b = ud;
+  if (b->span_overflow > 0) { b->span_overflow--; return 0; }
   if (b->spsp <= 0) return 0;
 
   struct span_frame *f = &b->spans[--b->spsp];

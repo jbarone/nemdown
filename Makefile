@@ -110,7 +110,7 @@ $(BUILD)/nemdown: $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(PKG_LIBS)
 
 # Test harnesses link the engine only: no Wayland, so they run headless.
-ENGINE_SRC := $(wildcard src/doc/*.c) src/ui/typography.c src/util/log.c
+ENGINE_SRC := $(wildcard src/doc/*.c) src/ui/typography.c $(wildcard src/util/*.c)
 
 build/dump_md4c: test/dump_md4c.c
 	@mkdir -p build
@@ -132,6 +132,13 @@ tools: build/dump_md4c build/dump_tree build/render_png build/render_app
 
 test: tools
 	@bash test/run.sh
+
+# Complements the sanitizers rather than duplicating them: valgrind needs no
+# recompilation and catches uninitialised reads ASan does not.
+# --errors-for-leak-kinds is narrowed because librsvg's Rust runtime shows
+# "possibly lost" interior pointers that are not ours and are not leaks.
+valgrind: debug tools
+	@for f in $$(find test/fixtures -name '*.md' | sort); do 	  printf '%-40s' "$$f"; 	  valgrind --tool=memcheck --leak-check=full 	    --show-leak-kinds=definite,indirect --errors-for-leak-kinds=definite,indirect 	    --track-origins=yes --error-exitcode=42 --suppressions=tools/valgrind.supp 	    ./build/render_app "$$f" /tmp/nemdown-vg.png 1000 800 >/dev/null 2>/tmp/nemdown-vg.log 	    && echo "clean" || { echo "ERRORS"; cat /tmp/nemdown-vg.log; exit 1; }; 	done
 
 run: debug
 	./build/debug/nemdown $(FILE)
@@ -163,6 +170,6 @@ compile_commands.json: Makefile
 	done
 	@printf ']\n' >> $@
 
-.PHONY: debug release asan run install uninstall clean tools test
+.PHONY: debug release asan run install uninstall clean tools test valgrind
 
 -include $(DEP)

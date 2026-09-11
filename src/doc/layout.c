@@ -2,6 +2,7 @@
 
 #include "doc/layout.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -465,9 +466,15 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
       double want_w = nw, want_h = nh;
       if (b->img_size && *b->img_size) {
         double hw = 0, hh = 0;
-        if (sscanf(b->img_size, "%lfx%lf", &hw, &hh) == 2 && hw > 0 && hh > 0) {
+        /* sscanf accepts "inf", "nan" and "1e400". A non-finite hint then
+         * propagates through the ratio arithmetic below into NaN, and NaN
+         * silently defeats every `>` clamp that follows — so screen it here
+         * rather than trying to catch it downstream. */
+        if (sscanf(b->img_size, "%lfx%lf", &hw, &hh) == 2 &&
+            isfinite(hw) && isfinite(hh) && hw > 0 && hh > 0) {
           want_w = hw; want_h = hh;
-        } else if (sscanf(b->img_size, "%lf", &hw) == 1 && hw > 0) {
+        } else if (sscanf(b->img_size, "%lf", &hw) == 1 &&
+                   isfinite(hw) && hw > 0) {
           want_w = hw;
           want_h = nh * (hw / nw);
         }
@@ -479,6 +486,16 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
       if (want_w > w) { want_h *= w / want_w; want_w = w; }
       if (want_h > ND_IMG_MAX_H) { want_w *= ND_IMG_MAX_H / want_h;
                                    want_h = ND_IMG_MAX_H; }
+
+      /* Belt and braces: nw/nh come from an image decoder, so even with a sane
+       * hint the ratios above could in principle go non-finite. */
+      if (!isfinite(want_w) || !isfinite(want_h) || want_w < 1 || want_h < 1) {
+        b->lay.img_w = 0;
+        b->lay.h = ND_IMG_FAIL_H;
+        b->lay.x = x;
+        y += b->lay.h;
+        break;
+      }
 
       b->lay.img_w = want_w;
       b->lay.img_h = want_h;

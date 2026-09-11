@@ -5,6 +5,7 @@
 #include <librsvg/rsvg.h>
 #include <ctype.h>
 #include <stdint.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +13,7 @@
 
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
+#include "doc/pathguard.h"
 #include "util/log.h"
 
 #define ND_CACHE_MAX 48
@@ -24,16 +26,19 @@ struct entry {
 
 struct nd_image_cache {
   char        *base_dir;
+  char        *root_dir;
   double       scale;
   struct entry e[ND_CACHE_MAX];
   unsigned     n;
   uint64_t     tick;
 };
 
-struct nd_image_cache *nd_images_new(const char *base_dir) {
+struct nd_image_cache *nd_images_new(const char *base_dir,
+                                     const char *root_dir) {
   struct nd_image_cache *c = calloc(1, sizeof *c);
   if (!c) return NULL;
   c->base_dir = strdup(base_dir ? base_dir : ".");
+  c->root_dir = strdup(root_dir ? root_dir : (base_dir ? base_dir : "."));
   c->scale = 1.0;
   return c;
 }
@@ -48,6 +53,7 @@ void nd_images_free(struct nd_image_cache *c) {
   if (!c) return;
   for (unsigned i = 0; i < c->n; i++) entry_clear(&c->e[i]);
   free(c->base_dir);
+  free(c->root_dir);
   free(c);
 }
 
@@ -96,16 +102,24 @@ static char *resolve(struct nd_image_cache *c, const char *src) {
   }
 
   char buf[4096];
+
+  /* An absolute path is only honoured if it lands inside the tree anyway. */
   if (dec[0] == '/') {
-    if (exists(dec)) return dec;
+    if (exists(dec) && nd_path_within(c->root_dir, dec)) return dec;
     free(dec);
     return NULL;
   }
 
   static const char *prefixes[] = {"", "attachments/", "assets/"};
   for (unsigned i = 0; i < 3; i++) {
-    snprintf(buf, sizeof buf, "%s/%s%s", c->base_dir, prefixes[i], dec);
-    if (exists(buf)) { free(dec); return strdup(buf); }
+    int n = snprintf(buf, sizeof buf, "%s/%s%s", c->base_dir, prefixes[i], dec);
+    if (n < 0 || (size_t)n >= sizeof buf) continue; /* refuse on truncation */
+    if (!exists(buf)) continue;
+    /* Decoding happens before this, so `%2e%2e/` is caught here too: the check
+     * is on the resolved path, not on the text the document wrote. */
+    if (!nd_path_within(c->root_dir, buf)) continue;
+    free(dec);
+    return strdup(buf);
   }
 
   free(dec);
@@ -214,7 +228,12 @@ static cairo_surface_t *render_svg(const char *path, double w, double h,
 
 static struct entry *cache_slot(struct nd_image_cache *c, const char *key) {
   for (unsigned i = 0; i < c->n; i++)
-    if (strcmp(c->e[i].key, key) == 0) { c->e[i].used = ++c->tick; return &c->e[i]; }
+    /* key can be NULL for a slot that was claimed but never populated, so this
+     * test has to come first. */
+    if (c->e[i].key && strcmp(c->e[i].key, key) == 0) {
+      c->e[i].used = ++c->tick;
+      return &c->e[i];
+    }
 
   if (c->n < ND_CACHE_MAX) return &c->e[c->n++];
 
@@ -227,7 +246,10 @@ static struct entry *cache_slot(struct nd_image_cache *c, const char *key) {
 
 cairo_surface_t *nd_images_get(struct nd_image_cache *c, const char *src,
                                double w, double h) {
-  if (!c || w < 1 || h < 1) return NULL;
+  /* Written as !(>=) so NaN is rejected: NaN fails every ordered comparison,
+   * so `w < 1` would let it straight through. */
+  if (!c || !(w >= 1.0) || !(h >= 1.0) || !isfinite(w) || !isfinite(h))
+    return NULL;
 
   char *path = resolve(c, src);
   if (!path) return NULL;
@@ -236,7 +258,8 @@ cairo_surface_t *nd_images_get(struct nd_image_cache *c, const char *src,
   snprintf(key, sizeof key, "%s|%dx%d@%.2f", path, (int)w, (int)h, c->scale);
 
   struct entry *slot = cache_slot(c, key);
-  if (slot->key && strcmp(slot->key, key) == 0 && slot->surf) {
+  if (slot->key && strcmp(slot->key, key) == 0) {
+    /* A hit, which may be a NULL surface: that is a remembered failure. */
     free(path);
     return slot->surf;
   }
@@ -257,11 +280,25 @@ cairo_surface_t *nd_images_get(struct nd_image_cache *c, const char *src,
   }
 
   free(path);
-  if (!surf) return NULL;
 
+  /* Record the outcome either way. A failed decode is cached as a NULL
+   * surface, which does two things: it stops the next lookup from finding a
+   * claimed-but-unpopulated slot with a NULL key and calling strcmp on it, and
+   * it stops a broken file being re-decoded on every single frame.
+   *
+   * A header can parse while the pixel data does not — gdk_pixbuf_get_file_info
+   * succeeds on a valid IHDR with a corrupt IDAT — so this path is reachable
+   * from any document that ships a malformed image. */
   entry_clear(slot);
   slot->key = strdup(key);
   slot->surf = surf;
   slot->used = ++c->tick;
+
+  if (!slot->key) {
+    /* Out of memory: leave nothing half-initialised behind. */
+    if (surf) cairo_surface_destroy(surf);
+    memset(slot, 0, sizeof *slot);
+    return NULL;
+  }
   return surf;
 }

@@ -4,6 +4,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -13,6 +14,7 @@
 #include "doc/images.h"
 #include "doc/layout.h"
 #include "doc/paint.h"
+#include "doc/pathguard.h"
 #include "doc/parse.h"
 #include "doc/search.h"
 #include "doc/select.h"
@@ -21,10 +23,12 @@
 #include "doc/toc.h"
 #include "doc/wikilink.h"
 #include "util/log.h"
+#include "util/utf8.h"
 
 struct nd_doc {
   char *path;
   char *dir;       /* the document's directory: wikilinks resolve against it */
+  char *root_dir;  /* containment boundary: set once, survives navigation */
   char *raw;       /* the whole file, as read */
   size_t raw_len;
 
@@ -90,7 +94,7 @@ static bool rebuild(nd_doc *d, char **err) {
 
   nd_frontmatter_parse(&d->arena, d->src.yaml, d->src.yaml_len, &d->props);
   nd_postprocess(&d->arena, d->root);
-  nd_wikilink_resolve_tree(&d->arena, d->root, d->dir);
+  nd_wikilink_resolve_tree(&d->arena, d->root, d->dir, d->root_dir);
   nd_toc_build(&d->arena, d->root, &d->toc_store, &d->toc);
   d->title = nd_toc_document_title(&d->arena, d->root, d->path);
   return true;
@@ -116,6 +120,13 @@ bool nd_doc_load(nd_doc *d, const char *path, char **err) {
   char *buf = read_file(path, &len, err);
   if (!buf) return false;
 
+  /* Scrub before anything parses or measures it. Doing this once here is what
+   * lets every consumer downstream — Pango, GLib's UTF-8 helpers, the
+   * clipboard — rely on the contract node.h states. */
+  size_t bad = nd_utf8_scrub(buf, len);
+  if (bad) nd_warn("%s: replaced %zu malformed byte%s", path, bad,
+                   bad == 1 ? "" : "s");
+
   free(d->raw);
   d->raw = buf;
   d->raw_len = len;
@@ -130,8 +141,13 @@ bool nd_doc_load(nd_doc *d, const char *path, char **err) {
   d->dir = strdup((slash && dup) ? dup : ".");
   free(dup);
 
+  /* The FIRST document opened fixes the boundary. Navigating within the tree
+   * must not be able to widen it, or one hop through a wikilink would hand the
+   * next document the whole filesystem. */
+  if (!d->root_dir) d->root_dir = strdup(d->dir);
+
   nd_images_free(d->images);
-  d->images = nd_images_new(d->dir);
+  d->images = nd_images_new(d->dir, d->root_dir);
 
   return rebuild(d, err);
 }
@@ -163,6 +179,7 @@ bool nd_doc_reload(nd_doc *d, char **err) {
   char *buf = read_file(d->path, &len, err);
   if (!buf) return false;
 
+  nd_utf8_scrub(buf, len);
   free(d->raw);
   d->raw = buf;
   d->raw_len = len;
@@ -179,6 +196,7 @@ void nd_doc_free(nd_doc *d) {
   if (d->pctx) g_object_unref(d->pctx);
   free(d->raw);
   free(d->dir);
+  free(d->root_dir);
   free(d->path);
   free(d);
 }
@@ -434,7 +452,25 @@ bool nd_doc_toggle_task(nd_doc *d, uint32_t source_offset, bool now_checked) {
 
   FILE *f = fopen(d->path, "r+b");
   if (!f) return false;
+
+  /* raw_len is the size at PARSE time. If the file shrank since — an edit the
+   * watcher has not caught up with yet, or one on a filesystem inotify does
+   * not cover — seeking to a stale offset and writing would extend the file
+   * through a hole of NULs. Check the size as it is now. */
+  struct stat st;
+  if (fstat(fileno(f), &st) != 0 || (off_t)source_offset >= st.st_size) {
+    fclose(f);
+    return false;
+  }
+
   if (fseek(f, (long)source_offset, SEEK_SET) != 0) { fclose(f); return false; }
+
+  /* Confirm we are about to overwrite a checkbox and not something else the
+   * file now holds at that offset. */
+  int cur = fgetc(f);
+  if (cur != ' ' && cur != 'x' && cur != 'X') { fclose(f); return false; }
+  if (fseek(f, (long)source_offset, SEEK_SET) != 0) { fclose(f); return false; }
+
   char c = now_checked ? 'x' : ' ';
   bool ok = fwrite(&c, 1, 1, f) == 1;
   fclose(f);
