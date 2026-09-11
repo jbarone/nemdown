@@ -9,9 +9,12 @@
 #include "doc/node.h"
 #include "ui/typography.h"
 
+struct nd_image_cache;
+
 struct nd_layout_ctx {
   PangoContext    *pctx;
   struct nd_arena *arena; /* for highlighter token spans */
+  struct nd_image_cache *images;
   double           font_scale;
   double           column_x, column_w;
 };

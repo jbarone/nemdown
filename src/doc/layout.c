@@ -8,6 +8,7 @@
 
 #include "doc/callout.h"
 #include "doc/highlight.h"
+#include "doc/images.h"
 #include "ui/theme.h"
 
 #define ND_LIST_INDENT   28.0
@@ -22,6 +23,8 @@
 #define ND_CALLOUT_PAD_X 16.0
 #define ND_CALLOUT_PAD_Y 12.0
 #define ND_CALLOUT_ICON  26.0
+#define ND_IMG_MAX_H    600.0
+#define ND_IMG_FAIL_H    96.0
 
 PangoContext *nd_pango_context_new(void) {
   PangoFontMap *fm = pango_cairo_font_map_get_default();
@@ -415,11 +418,45 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
       break;
     }
 
-    case ND_IMAGE:
-      /* Real decoding lands with the image cache; reserve a placeholder box. */
-      b->lay.h = 96.0;
-      y += b->lay.h;
+    case ND_IMAGE: {
+      double nw = 0, nh = 0;
+      bool have = ctx->images &&
+                  nd_images_probe(ctx->images, b->img_src, &nw, &nh);
+
+      if (!have || nw < 1 || nh < 1) {
+        b->lay.img_w = 0;
+        b->lay.h = ND_IMG_FAIL_H;
+        y += b->lay.h;
+        break;
+      }
+
+      /* An explicit `|400` or `|400x300` hint wins, still clamped to the
+       * column; raster is never upscaled past its natural size. */
+      double want_w = nw, want_h = nh;
+      if (b->img_size && *b->img_size) {
+        double hw = 0, hh = 0;
+        if (sscanf(b->img_size, "%lfx%lf", &hw, &hh) == 2 && hw > 0 && hh > 0) {
+          want_w = hw; want_h = hh;
+        } else if (sscanf(b->img_size, "%lf", &hw) == 1 && hw > 0) {
+          want_w = hw;
+          want_h = nh * (hw / nw);
+        }
+      } else if (want_w > w) {
+        want_w = w;
+        want_h = nh * (w / nw);
+      }
+
+      if (want_w > w) { want_h *= w / want_w; want_w = w; }
+      if (want_h > ND_IMG_MAX_H) { want_w *= ND_IMG_MAX_H / want_h;
+                                   want_h = ND_IMG_MAX_H; }
+
+      b->lay.img_w = want_w;
+      b->lay.img_h = want_h;
+      b->lay.x = x + (w - want_w) / 2.0; /* centred in the column */
+      b->lay.h = want_h;
+      y += want_h;
       break;
+    }
 
     default: {
       double end = layout_children(ctx, b, x, y, w);

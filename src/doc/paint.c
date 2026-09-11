@@ -5,6 +5,7 @@
 #include <pango/pangocairo.h>
 
 #include "doc/callout.h"
+#include "doc/images.h"
 #include "ui/theme.h"
 #include "ui/typography.h"
 
@@ -24,6 +25,10 @@ static void rounded_rect(cairo_t *cr, double x, double y, double w, double h,
   cairo_arc(cr, x + r,     y + r,     r, G_PI,       3 * G_PI / 2);
   cairo_close_path(cr);
 }
+
+/* Painting is a tree walk, so the cache rides along in a file-scope pointer set
+ * once per frame rather than threading an extra parameter through every case. */
+static struct nd_image_cache *paint_images;
 
 static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1);
 
@@ -191,7 +196,22 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
       break;
 
     case ND_IMAGE: {
-      /* Placeholder until the decode cache lands. */
+      if (b->lay.img_w > 0 && paint_images) {
+        cairo_surface_t *img =
+            nd_images_get(paint_images, b->img_src, b->lay.img_w, b->lay.img_h);
+        if (img) {
+          cairo_save(cr);
+          cairo_translate(cr, b->lay.x, b->lay.y);
+          cairo_set_source_surface(cr, img, 0, 0);
+          cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+          cairo_rectangle(cr, 0, 0, b->lay.img_w, b->lay.img_h);
+          cairo_fill(cr);
+          cairo_restore(cr);
+          break;
+        }
+      }
+
+      /* Missing, unreadable, or remote: say so rather than drawing nothing. */
       nd_src(cr, CTP_SURFACE0);
       rounded_rect(cr, b->lay.x, b->lay.y, b->lay.w, b->lay.h, ND_RADIUS);
       cairo_fill_preserve(cr);
@@ -277,8 +297,9 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
 }
 
 void nd_paint_tree(cairo_t *cr, nd_block *root, double scroll_y,
-                   double viewport_h) {
+                   double viewport_h, struct nd_image_cache *images) {
   double y0 = scroll_y, y1 = scroll_y + viewport_h;
+  paint_images = images;
 
   cairo_save(cr);
   cairo_translate(cr, 0, -scroll_y);

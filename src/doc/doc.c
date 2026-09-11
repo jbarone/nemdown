@@ -8,6 +8,7 @@
 
 #include "doc/arena.h"
 #include "doc/frontmatter.h"
+#include "doc/images.h"
 #include "doc/layout.h"
 #include "doc/paint.h"
 #include "doc/parse.h"
@@ -35,6 +36,8 @@ struct nd_doc {
   nd_toc   toc;
   nd_props props;
   char    *title;
+
+  struct nd_image_cache *images; /* outlives reparse: see images.h */
 };
 
 static char *read_file(const char *path, size_t *len, char **err) {
@@ -86,6 +89,14 @@ nd_doc *nd_doc_open(const char *path, char **err) {
   if (!d) { *err = nd_strdup_fmt("out of memory"); return NULL; }
 
   d->path = strdup(path);
+
+  /* Relative image paths resolve against the document's own directory. */
+  char *dup = strdup(path);
+  char *slash = strrchr(dup, '/');
+  if (slash) *slash = '\0';
+  d->images = nd_images_new(slash ? dup : ".");
+  free(dup);
+
   nd_arena_init(&d->arena);
   d->pctx = nd_pango_context_new();
   d->last_font_scale = 1.0;
@@ -112,6 +123,7 @@ void nd_doc_free(nd_doc *d) {
   if (!d) return;
   nd_layout_free_tree(d->root);
   nd_arena_reset(&d->arena);
+  nd_images_free(d->images);
   if (d->pctx) g_object_unref(d->pctx);
   free(d->raw);
   free(d->path);
@@ -136,6 +148,7 @@ double nd_doc_layout(nd_doc *d, double viewport_w, double font_scale) {
   struct nd_layout_ctx ctx = {
     .pctx = d->pctx,
     .arena = &d->arena,
+    .images = d->images,
     .font_scale = font_scale,
     .column_x = col_x,
     .column_w = col_w,
@@ -153,14 +166,14 @@ double nd_doc_layout(nd_doc *d, double viewport_w, double font_scale) {
 double nd_doc_content_height(const nd_doc *d) { return d->content_h; }
 
 void nd_doc_set_scale(nd_doc *d, double scale) {
-  /* Layout is scale-invariant (metrics hinting is off), so there is nothing to
-   * redo here. Once images land, this is where their cache gets dropped. */
-  (void)d; (void)scale;
+  /* Layout is scale-invariant (metrics hinting is off), so only the
+   * resolution-dependent raster cache needs to go. */
+  nd_images_set_scale(d->images, scale);
 }
 
 void nd_doc_paint(nd_doc *d, cairo_t *cr, double scroll_y, double viewport_h) {
   if (!d->laid_out) return;
-  nd_paint_tree(cr, d->root, scroll_y, viewport_h);
+  nd_paint_tree(cr, d->root, scroll_y, viewport_h, d->images);
 }
 
 bool nd_doc_hit_test(nd_doc *d, double x, double doc_y, nd_hit *out) {
