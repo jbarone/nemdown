@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "doc/arena.h"
+#include "util/log.h"
 
 /* True if the line starting at p (length avail) is exactly `fence`, allowing
  * trailing spaces and a CR. */
@@ -67,8 +68,11 @@ struct edits {
 
 static void edits_put(struct edits *e, size_t new_off, size_t orig_off) {
   if (e->len == e->cap) {
-    e->cap = e->cap ? e->cap * 2 : 16;
-    e->p = realloc(e->p, e->cap * sizeof *e->p);
+    size_t cap = e->cap ? e->cap * 2 : 16;
+    struct nd_edit *grown = realloc(e->p, cap * sizeof *grown);
+    if (!grown) nd_die("out of memory");
+    e->p = grown;
+    e->cap = cap;
   }
   e->p[e->len].new_off = new_off;
   e->p[e->len].orig_off = orig_off;
@@ -79,7 +83,9 @@ static void buf_put(struct buf *b, const char *s, size_t n) {
   if (b->len + n > b->cap) {
     size_t cap = b->cap ? b->cap * 2 : 4096;
     while (cap < b->len + n) cap *= 2;
-    b->p = realloc(b->p, cap);
+    char *grown = realloc(b->p, cap);
+    if (!grown) nd_die("out of memory");
+    b->p = grown;
     b->cap = cap;
   }
   memcpy(b->p + b->len, s, n);

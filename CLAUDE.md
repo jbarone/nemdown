@@ -124,5 +124,14 @@ These were each a real bug; the comments in the code say so at the site.
 - **A silently-declined push must have its matching pop declined too.** This
   bit the block stack (an out-of-bounds write) and the span stack (vanishing
   links). Both count declines now.
+- **Pango stops laying out above roughly 190KB in one layout** and reports a
+  single line, so an enormous paragraph silently renders as a blank sliver.
+  `nd_layout_for` caps the text it hands over so the failure is a visible
+  truncation with a warning instead.
+- **Anything per-match or per-block in a paint or search path must be culled to
+  the viewport**, and positions resolved in one pass over the layout rather
+  than per item — `pango_layout_index_to_line_x` and
+  `pango_layout_get_line_readonly` both walk the line list from the start, so
+  per-item lookup is quadratic. This was 79 seconds a frame.
 - **Copying yields rendered text, not markdown source.** md4c's text callback
   carries no source offset, so the mapping does not exist.

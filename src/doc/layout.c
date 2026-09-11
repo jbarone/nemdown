@@ -11,6 +11,7 @@
 #include "doc/highlight.h"
 #include "doc/images.h"
 #include "ui/theme.h"
+#include "util/log.h"
 
 #define ND_LIST_INDENT   28.0
 #define ND_MARKER_COL    20.0
@@ -147,6 +148,14 @@ static PangoAttrList *attrs_for(const nd_inline *inl, const nd_style *st,
   return al;
 }
 
+/* Above roughly 190KB in a single layout, Pango stops laying out and reports
+ * one line — so a paragraph that large renders as a blank sliver and its
+ * content vanishes with no error. Measured on pango 1.58.2: 190,000 bytes
+ * gives 3016 lines, 200,000 gives 1. Cap well below that so the failure is a
+ * visible truncation rather than silent loss. No paragraph a person writes
+ * comes close; this is reached by generated or minified content. */
+#define ND_MAX_LAYOUT_BYTES 131072
+
 PangoLayout *nd_layout_for(struct nd_layout_ctx *ctx, const nd_inline *inl,
                            const nd_style *st, double width) {
   PangoLayout *pl = pango_layout_new(ctx->pctx);
@@ -155,7 +164,16 @@ PangoLayout *nd_layout_for(struct nd_layout_ctx *ctx, const nd_inline *inl,
   pango_layout_set_font_description(pl, fd);
   pango_font_description_free(fd);
 
-  pango_layout_set_text(pl, inl->text ? inl->text : "", (int)inl->len);
+  uint32_t len = inl->len;
+  if (len > ND_MAX_LAYOUT_BYTES) {
+    /* Back up to a character boundary so Pango is not handed a split
+     * sequence, which is its own kind of trouble. */
+    len = ND_MAX_LAYOUT_BYTES;
+    while (len > 0 && ((unsigned char)inl->text[len] & 0xC0) == 0x80) len--;
+    nd_warn("paragraph of %u bytes exceeds what can be laid out; truncated",
+            inl->len);
+  }
+  pango_layout_set_text(pl, inl->text ? inl->text : "", (int)len);
 
   PangoAttrList *al = attrs_for(inl, st, ctx->font_scale);
   pango_layout_set_attributes(pl, al);
@@ -360,6 +378,11 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
 
       double *natural = calloc(ncols, sizeof *natural);
       double *minimum = calloc(ncols, sizeof *minimum);
+      if (!natural || !minimum) {
+        free(natural); free(minimum);
+        b->lay.h = 0;
+        break;
+      }
 
       for (uint32_t r = 0; r < b->nkids; r++) {
         nd_block *row = b->kids[r];
@@ -388,6 +411,13 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
       for (uint32_t c = 0; c < ncols; c++) total += natural[c] + pad;
 
       double *final_w = calloc(ncols, sizeof *final_w);
+      double *rowy    = calloc(b->nkids ? b->nkids : 1, sizeof(double));
+      if (!final_w || !rowy) {
+        free(natural); free(minimum); free(final_w); free(rowy);
+        b->lay.h = 0;
+        break;
+      }
+
       if (total <= w) {
         for (uint32_t c = 0; c < ncols; c++) final_w[c] = natural[c];
       } else {
@@ -408,7 +438,7 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
       free(b->lay.colw);
       free(b->lay.rowy);
       b->lay.colw = final_w;
-      b->lay.rowy = calloc(b->nkids ? b->nkids : 1, sizeof(double));
+      b->lay.rowy = rowy;
 
       double ty = y;
       for (uint32_t r = 0; r < b->nkids; r++) {

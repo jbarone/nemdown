@@ -9,8 +9,11 @@
 static void collect(nd_block *b, nd_block ***vec, size_t *n, size_t *cap) {
   if (b->kind == ND_HEADING) {
     if (*n == *cap) {
-      *cap = *cap ? *cap * 2 : 32;
-      *vec = realloc(*vec, *cap * sizeof **vec);
+      size_t grown_cap = *cap ? *cap * 2 : 32;
+      nd_block **grown = realloc(*vec, grown_cap * sizeof **vec);
+      if (!grown) return;
+      *vec = grown;
+      *cap = grown_cap;
     }
     (*vec)[(*n)++] = b;
   }

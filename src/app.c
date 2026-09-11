@@ -476,17 +476,24 @@ static void navigate(struct nd_app *app, const char *path, const char *anchor,
                      bool push_history) {
   char *err = NULL;
 
-  if (push_history && app->history_n < (int)(sizeof app->history / sizeof app->history[0])) {
-    app->history[app->history_n] = strdup(nd_doc_path(app->doc));
-    app->history_scroll[app->history_n] = app->scroll.offset;
-    app->history_n++;
+  bool pushed = false;
+  if (push_history &&
+      app->history_n < (int)(sizeof app->history / sizeof app->history[0])) {
+    char *prev = strdup(nd_doc_path(app->doc));
+    if (prev) {
+      app->history[app->history_n] = prev;
+      app->history_scroll[app->history_n] = app->scroll.offset;
+      app->history_n++;
+      pushed = true;
+    }
   }
 
   if (!nd_doc_load(app->doc, path, &err)) {
     nd_warn("%s", err ? err : "cannot open");
     free(err);
-    if (push_history && app->history_n > 0) {
-      /* The push was speculative; undo it rather than leaving a dead entry. */
+    /* Roll back only a push we actually made. Testing push_history alone
+     * would pop a real entry when the stack was already full. */
+    if (pushed) {
       app->history_n--;
       free(app->history[app->history_n]);
       app->history[app->history_n] = NULL;
@@ -550,8 +557,7 @@ static void reload_document(struct nd_app *app) {
   /* Every pointer handed out by doc.h died with the reload, so the sidebar's
    * cached hover index has to go too. */
   app->sidebar.hover_toc = -1;
-  app->hover.kind = ND_HIT_NONE;
-  app->hover.url = NULL;
+  memset(&app->hover, 0, sizeof app->hover);
 
   double sidebar = app->sidebar_visible ? app->sidebar_w : 0.0;
   nd_doc_layout(app->doc, (double)app->win.w - sidebar, app->font_scale);

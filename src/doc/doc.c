@@ -53,6 +53,13 @@ struct nd_doc {
   char        *needle;
 };
 
+/* Layout measures and retains a PangoLayout for every block, so cost is
+ * O(document) and a reflow runs on every width change. Measured: a 100MB file
+ * is 19s of layout and 7.8GB resident, repeated on every resize frame — on the
+ * same thread that must answer xdg_wm_base.ping, so the compositor kills us.
+ * A markdown document a person reads is orders of magnitude under this. */
+#define ND_MAX_FILE_BYTES (32u * 1024u * 1024u)
+
 static char *read_file(const char *path, size_t *len, char **err) {
   FILE *f = fopen(path, "rb");
   if (!f) {
@@ -62,6 +69,12 @@ static char *read_file(const char *path, size_t *len, char **err) {
   if (fseek(f, 0, SEEK_END) != 0) { fclose(f); *err = nd_strdup_fmt("cannot seek %s", path); return NULL; }
   long n = ftell(f);
   if (n < 0) { fclose(f); *err = nd_strdup_fmt("cannot size %s", path); return NULL; }
+  if ((unsigned long)n > ND_MAX_FILE_BYTES) {
+    fclose(f);
+    *err = nd_strdup_fmt("%s is %ld MB; nemdown declines files over %u MB",
+                         path, n / (1024 * 1024), ND_MAX_FILE_BYTES / (1024 * 1024));
+    return NULL;
+  }
   rewind(f);
 
   char *buf = malloc((size_t)n + 1);
@@ -88,6 +101,12 @@ static bool rebuild(nd_doc *d, char **err) {
 
   d->root = nd_parse(&d->arena, &d->src);
   if (!d->root) {
+    /* The arena was reset above, so everything these point at is gone. The
+     * callers only warn and carry on, and the next frame would read them. */
+    memset(&d->toc, 0, sizeof d->toc);
+    memset(&d->toc_store, 0, sizeof d->toc_store);
+    memset(&d->props, 0, sizeof d->props);
+    d->title = NULL;
     *err = nd_strdup_fmt("failed to parse %s", d->path);
     return false;
   }
@@ -202,6 +221,7 @@ void nd_doc_free(nd_doc *d) {
 }
 
 double nd_doc_layout(nd_doc *d, double viewport_w, double font_scale) {
+  if (!d->root) return 0.0; /* a failed rebuild leaves no tree to measure */
   if (d->laid_out && viewport_w == d->last_viewport_w &&
       font_scale == d->last_font_scale)
     return d->content_h;
@@ -251,14 +271,15 @@ void nd_doc_set_scale(nd_doc *d, double scale) {
 }
 
 void nd_doc_paint(nd_doc *d, cairo_t *cr, double scroll_y, double viewport_h) {
-  if (!d->laid_out) return;
+  if (!d->laid_out || !d->root) return;
 
   /* Selection and search highlights go down first, so glyphs sit on top. */
   if (d->sel.active || d->matches.count) {
     cairo_save(cr);
     cairo_translate(cr, 0, -scroll_y);
     if (d->sel.active) nd_select_paint(cr, d->root, &d->sel);
-    if (d->matches.count) nd_search_paint(cr, &d->matches);
+    if (d->matches.count)
+      nd_search_paint(cr, &d->matches, scroll_y, scroll_y + viewport_h);
     cairo_restore(cr);
   }
   nd_paint_tree(cr, d->root, scroll_y, viewport_h, d->images);
@@ -266,7 +287,7 @@ void nd_doc_paint(nd_doc *d, cairo_t *cr, double scroll_y, double viewport_h) {
 
 void nd_doc_select_begin(nd_doc *d, double x, double doc_y) {
   nd_point p;
-  if (!d->laid_out || !nd_select_point_at(d->root, x, doc_y, &p)) {
+  if (!d->laid_out || !d->root || !nd_select_point_at(d->root, x, doc_y, &p)) {
     nd_doc_select_clear(d);
     return;
   }
@@ -276,20 +297,20 @@ void nd_doc_select_begin(nd_doc *d, double x, double doc_y) {
 
 void nd_doc_select_extend(nd_doc *d, double x, double doc_y) {
   nd_point p;
-  if (!d->sel.active || !d->laid_out) return;
+  if (!d->sel.active || !d->laid_out || !d->root) return;
   if (nd_select_point_at(d->root, x, doc_y, &p)) d->sel.focus = p;
 }
 
 void nd_doc_select_word(nd_doc *d, double x, double doc_y) {
   nd_point p;
-  if (!d->laid_out || !nd_select_point_at(d->root, x, doc_y, &p)) return;
+  if (!d->laid_out || !d->root || !nd_select_point_at(d->root, x, doc_y, &p)) return;
   nd_select_word_at(d->root, p, &d->sel.anchor, &d->sel.focus);
   d->sel.active = true;
 }
 
 void nd_doc_select_block(nd_doc *d, double x, double doc_y) {
   nd_point p;
-  if (!d->laid_out || !nd_select_point_at(d->root, x, doc_y, &p)) return;
+  if (!d->laid_out || !d->root || !nd_select_point_at(d->root, x, doc_y, &p)) return;
   nd_select_block_at(d->root, p, &d->sel.anchor, &d->sel.focus);
   d->sel.active = true;
 }
@@ -310,7 +331,7 @@ char *nd_doc_select_text(nd_doc *d) {
 /* Top-level block index in the high bits, pixels into that block in the low
  * bits. Block indices survive a reparse far better than absolute offsets do. */
 uint64_t nd_doc_anchor_at(const nd_doc *d, double doc_y) {
-  if (!d->laid_out || d->root->nkids == 0) return 0;
+  if (!d->laid_out || !d->root || d->root->nkids == 0) return 0;
 
   for (uint32_t i = 0; i < d->root->nkids; i++) {
     nd_block *k = d->root->kids[i];
@@ -325,7 +346,7 @@ uint64_t nd_doc_anchor_at(const nd_doc *d, double doc_y) {
 }
 
 double nd_doc_y_for_anchor(const nd_doc *d, uint64_t anchor) {
-  if (!d->laid_out || d->root->nkids == 0) return 0.0;
+  if (!d->laid_out || !d->root || d->root->nkids == 0) return 0.0;
 
   uint32_t index = (uint32_t)(anchor >> 32);
   double   into  = (double)(anchor & 0xffffffffu);
@@ -358,7 +379,7 @@ static nd_block *code_at(nd_block *b, double x, double doc_y) {
 }
 
 bool nd_doc_pan_code(nd_doc *d, double x, double doc_y, double dx) {
-  if (!d->laid_out) return false;
+  if (!d->laid_out || !d->root) return false;
 
   nd_block *b = code_at(d->root, x, doc_y);
   if (!b) return false;
@@ -399,7 +420,7 @@ static void find_pannable(nd_block *b, double y0, double y1, double centre,
 
 bool nd_doc_pan_focused(nd_doc *d, double scroll_y, double viewport_h,
                         double dx) {
-  if (!d->laid_out) return false;
+  if (!d->laid_out || !d->root) return false;
 
   nd_block *best = NULL;
   double dist = 0;
@@ -417,7 +438,7 @@ bool nd_doc_pan_focused(nd_doc *d, double scroll_y, double viewport_h,
 
 bool nd_doc_hit_test(nd_doc *d, double x, double doc_y, nd_hit *out) {
   out->kind = ND_HIT_NONE;
-  if (!d->laid_out) return false;
+  if (!d->laid_out || !d->root) return false;
   return nd_hit_tree(d->root, x, doc_y, out);
 }
 
@@ -434,7 +455,7 @@ static nd_block *callout_at(nd_block *b, double x, double doc_y) {
 }
 
 void nd_doc_toggle_fold(nd_doc *d, double x, double doc_y) {
-  if (!d->laid_out) return;
+  if (!d->laid_out || !d->root) return;
   nd_block *c = callout_at(d->root, x, doc_y);
   if (!c) return;
 
