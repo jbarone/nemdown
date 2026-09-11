@@ -15,7 +15,10 @@
 #include "doc/entity.h"
 #include "util/log.h"
 
-#define MAX_BLOCK_DEPTH 64
+/* Deep enough for any document a person writes, and bounded so the recursive
+ * walks over the tree (layout, paint, hit testing) cannot run the C stack out
+ * on hostile input. */
+#define MAX_BLOCK_DEPTH 128
 #define MAX_SPAN_DEPTH  32
 
 /* Scratch vectors grow with realloc, then get copied into the arena at their
@@ -60,6 +63,9 @@ struct builder {
   nd_block    *root;
   struct frame stack[MAX_BLOCK_DEPTH];
   int          sp;
+  /* Blocks md4c opened that we declined to push because the stack was full.
+   * Their closes must be declined too, or push and pop go out of balance. */
+  int          overflow;
 
   struct span_frame spans[MAX_SPAN_DEPTH];
   int       spsp;
@@ -95,7 +101,13 @@ static void adopt(struct builder *b, nd_block *n) {
 }
 
 static void push(struct builder *b, nd_block *n) {
-  if (b->sp >= MAX_BLOCK_DEPTH) return;
+  if (b->sp >= MAX_BLOCK_DEPTH) {
+    /* Silently dropping the push while still honouring the matching pop would
+     * walk sp down past zero, and leave_block would then read stack[-1] and
+     * write through the garbage pointer it found there. Count it instead. */
+    b->overflow++;
+    return;
+  }
   adopt(b, n);
   b->stack[b->sp].node = n;
   vec_init(&b->stack[b->sp].kids, sizeof(nd_block *));
@@ -213,11 +225,15 @@ static int enter_block(MD_BLOCKTYPE type, void *detail, void *ud) {
       push(b, b->root);
       break;
 
-    case MD_BLOCK_P:
-      push(b, node_new(b, ND_PARA));
-      b->leaf = b->stack[b->sp - 1].node;
+    case MD_BLOCK_P: {
+      nd_block *n = node_new(b, ND_PARA);
+      push(b, n);
+      /* Use the node we created, not the stack top: a declined push leaves a
+       * different block on top and text would be attributed to it. */
+      b->leaf = n;
       inl_begin(b);
       break;
+    }
 
     case MD_BLOCK_H: {
       MD_BLOCK_H_DETAIL *d = detail;
@@ -321,6 +337,11 @@ static int leave_block(MD_BLOCKTYPE type, void *detail, void *ud) {
   if (type == MD_BLOCK_THEAD || type == MD_BLOCK_TBODY) return 0;
 
   implicit_close(b);
+
+  /* This block was never pushed, so there is nothing to close. */
+  if (b->overflow > 0) { b->overflow--; return 0; }
+  if (b->sp <= 0) return 0;
+
   nd_block *n = b->stack[b->sp - 1].node;
 
   switch (type) {
