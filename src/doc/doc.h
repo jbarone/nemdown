@@ -119,6 +119,13 @@ bool nd_doc_hit_test(nd_doc *d, double x, double doc_y, nd_hit *out);
 /* Writes a single byte to the source file, flipping a task checkbox. */
 bool nd_doc_toggle_task(nd_doc *d, uint32_t source_offset, bool now_checked);
 
+/* ---- horizontal panning ------------------------------------------------- */
+
+/* Code fences do not wrap; they clip and pan, as Obsidian's do. Returns true
+ * if a fence under the point actually moved, so the caller knows whether to
+ * consume the scroll event rather than passing it to the page. */
+bool nd_doc_pan_code(nd_doc *d, double x, double doc_y, double dx);
+
 /* ---- selection ---------------------------------------------------------- */
 
 void  nd_doc_select_begin(nd_doc *d, double x, double doc_y);

@@ -95,6 +95,8 @@ void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed,
 void nd_app_pointer_leave(struct nd_app *app);
 void nd_app_zoom(struct nd_app *app, double scale);
 void nd_app_scroll_by(struct nd_app *app, double dy, bool immediate);
+/* Returns true when a code fence consumed the movement. */
+bool nd_app_pan(struct nd_app *app, double x, double y, double dx);
 void nd_app_scroll_settle(struct nd_app *app);
 void nd_app_animate(struct nd_app *app, uint32_t time_ms);
 void nd_app_tick(struct nd_app *app);

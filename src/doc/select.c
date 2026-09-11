@@ -21,7 +21,9 @@ struct leaves {
 
 static void collect(nd_block *b, struct leaves *out) {
   if (out->n >= MAX_LEAVES) return;
-  if (b->lay.pl && b->inl.len > 0) out->b[out->n++] = b;
+  uint32_t len = 0;
+  nd_block_text(b, &len);
+  if (b->lay.pl && len > 0) out->b[out->n++] = b;
   for (uint32_t i = 0; i < b->nkids; i++) collect(b->kids[i], out);
 }
 
@@ -68,14 +70,15 @@ bool nd_select_point_at(nd_block *root, double x, double doc_y, nd_point *out) {
 
   /* `trailing` counts CHARACTERS past index, not bytes. Adding it directly
    * would land mid-sequence on any non-ASCII text and split a codepoint. */
-  const char *text = best->inl.text;
+  uint32_t tlen = 0;
+  const char *text = nd_block_text(best, &tlen);
   uint32_t byte = (uint32_t)index;
-  if (byte > best->inl.len) byte = best->inl.len;
-  for (int t = 0; t < trailing && byte < best->inl.len; t++) {
+  if (byte > tlen) byte = tlen;
+  for (int t = 0; t < trailing && byte < tlen; t++) {
     const char *next = g_utf8_next_char(text + byte);
     byte = (uint32_t)(next - text);
   }
-  if (byte > best->inl.len) byte = best->inl.len;
+  if (byte > tlen) byte = tlen;
 
   out->block = best_i;
   out->byte = byte;
@@ -97,8 +100,10 @@ void nd_select_paint(cairo_t *cr, nd_block *root, const nd_selection *sel) {
 
   for (uint32_t i = lo.block; i <= hi.block && i < lv.n; i++) {
     nd_block *b = lv.b[i];
+    uint32_t blen = 0;
+    nd_block_text(b, &blen);
     uint32_t s = (i == lo.block) ? lo.byte : 0;
-    uint32_t e = (i == hi.block) ? hi.byte : b->inl.len;
+    uint32_t e = (i == hi.block) ? hi.byte : blen;
     if (s >= e) continue;
 
     /* x-ranges per line handle a selection that wraps mid-paragraph. */
@@ -138,14 +143,16 @@ char *nd_select_copy(nd_block *root, const nd_selection *sel) {
   GString *out = g_string_new(NULL);
   for (uint32_t i = lo.block; i <= hi.block && i < lv.n; i++) {
     nd_block *b = lv.b[i];
+    uint32_t blen = 0;
+    const char *btext = nd_block_text(b, &blen);
     uint32_t s = (i == lo.block) ? lo.byte : 0;
-    uint32_t e = (i == hi.block) ? hi.byte : b->inl.len;
-    if (s > b->inl.len) s = b->inl.len;
-    if (e > b->inl.len) e = b->inl.len;
+    uint32_t e = (i == hi.block) ? hi.byte : blen;
+    if (s > blen) s = blen;
+    if (e > blen) e = blen;
     if (s >= e) continue;
 
     if (out->len) g_string_append_c(out, '\n');
-    g_string_append_len(out, b->inl.text + s, (gssize)(e - s));
+    g_string_append_len(out, btext + s, (gssize)(e - s));
   }
 
   if (!out->len) { g_string_free(out, TRUE); return NULL; }
@@ -159,15 +166,36 @@ void nd_select_word_at(nd_block *root, nd_point p, nd_point *lo, nd_point *hi) {
   if (p.block >= lv.n) return;
 
   nd_block *b = lv.b[p.block];
-  const char *t = b->inl.text;
-  uint32_t n = b->inl.len, i = p.byte;
+  uint32_t n = 0;
+  const char *t = nd_block_text(b, &n);
+  if (!t || n == 0) return;
+
+  uint32_t i = p.byte;
   if (i > n) i = n;
 
-  while (i > 0 && !g_ascii_isspace(t[i - 1])) i--;
-  lo->byte = i;
-  i = p.byte;
-  while (i < n && !g_ascii_isspace(t[i])) i++;
-  hi->byte = i;
+  /* Pango's own word boundaries rather than splitting on whitespace, so
+   * double-clicking `main(int` in a code fence takes `main`, not both. */
+  glong nchars = g_utf8_strlen(t, (gssize)n);
+  PangoLogAttr *attrs = g_malloc0((size_t)(nchars + 1) * sizeof *attrs);
+  pango_get_log_attrs(t, (int)n, -1, NULL, attrs, (int)(nchars + 1));
+
+  /* Byte offset -> character index. */
+  glong ci = g_utf8_pointer_to_offset(t, t + i);
+  if (ci > nchars) ci = nchars;
+
+  glong start = ci;
+  while (start > 0 && !attrs[start].is_word_start) start--;
+  glong end = ci;
+  while (end < nchars && !attrs[end].is_word_end) end++;
+
+  /* Clicking in the gap between words yields an empty range; fall back to the
+   * character under the pointer so a double-click always selects something. */
+  if (end <= start) end = (start < nchars) ? start + 1 : start;
+
+  lo->byte = (uint32_t)(g_utf8_offset_to_pointer(t, start) - t);
+  hi->byte = (uint32_t)(g_utf8_offset_to_pointer(t, end) - t);
+
+  g_free(attrs);
 }
 
 void nd_select_block_at(nd_block *root, nd_point p, nd_point *lo, nd_point *hi) {
@@ -175,5 +203,7 @@ void nd_select_block_at(nd_block *root, nd_point p, nd_point *lo, nd_point *hi) 
   leaves_of(root, &lv);
   *lo = *hi = p;
   lo->byte = 0;
-  hi->byte = (p.block < lv.n) ? lv.b[p.block]->inl.len : 0;
+  uint32_t blen = 0;
+  if (p.block < lv.n) nd_block_text(lv.b[p.block], &blen);
+  hi->byte = blen;
 }

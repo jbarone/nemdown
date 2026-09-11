@@ -24,7 +24,9 @@ Ctrl-C             copy                q / Esc        quit
 
 Clicking a contents entry scrolls to that heading. Clicking a link opens it;
 clicking a task checkbox toggles it **in the file**. Hovering a code fence
-reveals a copy button in its top-right corner. Drag to select text,
+reveals a copy button in its top-right corner. Code does not wrap — scroll
+sideways, or hold Shift and scroll, to pan an overflowing fence; a fade at the
+edge shows there is more. Drag to select text,
 double-click for a word, triple-click for a block. Drag the divider to resize
 the sidebar.
 

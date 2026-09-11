@@ -19,6 +19,8 @@ struct nd_pointer_frame {
   double   x, y;
   bool     have_axis;
   double   axis_v;
+  bool     have_haxis;   /* horizontal wheel / two-finger sideways */
+  double   axis_h;
   bool     have_v120;
   int32_t  v120;
   bool     have_stop;
@@ -49,6 +51,8 @@ struct nd_input {
   double   px, py;        /* last known pointer position, logical */
   uint32_t enter_serial;  /* required by cursor-shape set_shape */
   bool     has_pointer;
+
+  bool shift_held; /* shift+wheel pans an overflowing block sideways */
 
   struct wp_cursor_shape_device_v1 *cursor_dev;
   nd_cursor cursor;

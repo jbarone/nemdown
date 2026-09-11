@@ -102,6 +102,17 @@ void nd_app_scroll_by(struct nd_app *app, double dy, bool immediate) {
   mark(app, ND_DIRTY_ALL);
 }
 
+bool nd_app_pan(struct nd_app *app, double x, double y, double dx) {
+  if (!app->doc) return false;
+  if (app->sidebar_visible && x < app->sidebar_w) return false;
+
+  double cx = x - (app->sidebar_visible ? app->sidebar_w : 0.0);
+  if (!nd_doc_pan_code(app->doc, cx, y + app->scroll.offset, dx)) return false;
+
+  mark(app, ND_DIRTY_DOC);
+  return true;
+}
+
 void nd_app_scroll_settle(struct nd_app *app) {
   struct nd_scroll *s = &app->scroll;
   s->offset    = s->target;

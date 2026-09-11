@@ -27,30 +27,32 @@ static void push(nd_matches *m, nd_block *b, uint32_t s, uint32_t e) {
  * per-character offset table. */
 static void search_block(nd_block *b, const char *folded_needle,
                          size_t needle_len, nd_matches *out) {
-  if (!b->inl.text || b->inl.len == 0 || !b->lay.pl) return;
+  uint32_t blen = 0;
+  const char *btext = nd_block_text(b, &blen);
+  if (!btext || blen == 0 || !b->lay.pl) return;
 
-  char *folded = g_utf8_casefold(b->inl.text, (gssize)b->inl.len);
+  char *folded = g_utf8_casefold(btext, (gssize)blen);
   if (!folded) return;
 
   /* Map each folded byte position back to an original byte position. */
   size_t flen = strlen(folded);
   uint32_t *map = g_malloc0((flen + 1) * sizeof *map);
   {
-    const char *o = b->inl.text;
+    const char *o = btext;
     const char *f = folded;
-    const char *oend = b->inl.text + b->inl.len;
+    const char *oend = btext + blen;
     while (*f && o < oend) {
       gunichar oc = g_utf8_get_char(o);
       char *ofold = g_utf8_casefold(o, g_utf8_next_char(o) - o);
       size_t n = ofold ? strlen(ofold) : 1;
       for (size_t k = 0; k < n && (size_t)(f - folded) + k <= flen; k++)
-        map[(f - folded) + k] = (uint32_t)(o - b->inl.text);
+        map[(f - folded) + k] = (uint32_t)(o - btext);
       g_free(ofold);
       f += n;
       o = g_utf8_next_char(o);
       (void)oc;
     }
-    map[flen] = b->inl.len;
+    map[flen] = blen;
   }
 
   const char *p = folded;

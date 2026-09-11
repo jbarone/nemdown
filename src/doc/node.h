@@ -62,6 +62,7 @@ typedef struct {
   double *rowy;         /* tables: row offsets */
   double  img_w, img_h;
   double  natural_w;    /* code blocks: unwrapped width, for overflow */
+  double  hscroll;      /* code blocks: horizontal pan offset */
 } nd_layout;
 
 typedef struct nd_block nd_block;
@@ -91,5 +92,17 @@ struct nd_block {
 
   nd_layout lay;
 };
+
+/* Code fences keep their contents in code_text rather than inl, because they
+ * carry no inline runs. Anything walking blocks for TEXT — selection, search —
+ * must go through here or fences silently drop out of it. */
+static inline const char *nd_block_text(const nd_block *b, uint32_t *len) {
+  if (b->kind == ND_CODE) {
+    *len = b->code_len;
+    return b->code_text;
+  }
+  *len = b->inl.len;
+  return b->inl.text;
+}
 
 #endif /* NEMDOWN_NODE_H */

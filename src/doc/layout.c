@@ -246,6 +246,12 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
       b->lay.natural_w = pw;
       double pad_top = b->code_lang ? ND_CODE_PAD_Y + 16.0 : ND_CODE_PAD_Y;
       b->lay.h = ph + pad_top + ND_CODE_PAD_Y;
+
+      /* A narrower window means less overflow to pan through; without this the
+       * block stays scrolled past its own end. */
+      double overflow = b->lay.natural_w - (w - 2 * ND_CODE_PAD_X);
+      if (overflow < 0) overflow = 0;
+      if (b->lay.hscroll > overflow) b->lay.hscroll = overflow;
       y += b->lay.h;
       break;
     }

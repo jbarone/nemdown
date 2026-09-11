@@ -279,6 +279,41 @@ double nd_doc_y_for_anchor(const nd_doc *d, uint64_t anchor) {
   return y;
 }
 
+/* Finds the code fence containing a point, if any. */
+static nd_block *code_at(nd_block *b, double x, double doc_y) {
+  if (b->kind == ND_CODE) {
+    if (x >= b->lay.x && x <= b->lay.x + b->lay.w &&
+        doc_y >= b->lay.y && doc_y <= b->lay.y + b->lay.h)
+      return b;
+    return NULL;
+  }
+  for (uint32_t i = 0; i < b->nkids; i++) {
+    nd_block *k = b->kids[i];
+    if (doc_y < k->lay.y || doc_y > k->lay.y + k->lay.h) continue;
+    nd_block *found = code_at(k, x, doc_y);
+    if (found) return found;
+  }
+  return NULL;
+}
+
+bool nd_doc_pan_code(nd_doc *d, double x, double doc_y, double dx) {
+  if (!d->laid_out) return false;
+
+  nd_block *b = code_at(d->root, x, doc_y);
+  if (!b) return false;
+
+  /* Only the part that does not fit can move. */
+  double visible = b->lay.w - 2 * 16.0; /* panel padding, see layout.c */
+  double overflow = b->lay.natural_w - visible;
+  if (overflow <= 0) return false;
+
+  double before = b->lay.hscroll;
+  b->lay.hscroll += dx;
+  if (b->lay.hscroll < 0) b->lay.hscroll = 0;
+  if (b->lay.hscroll > overflow) b->lay.hscroll = overflow;
+  return b->lay.hscroll != before;
+}
+
 bool nd_doc_hit_test(nd_doc *d, double x, double doc_y, nd_hit *out) {
   out->kind = ND_HIT_NONE;
   if (!d->laid_out) return false;

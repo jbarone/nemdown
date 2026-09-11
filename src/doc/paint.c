@@ -97,15 +97,48 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
       }
 
       if (b->lay.pl) {
-        /* Code does not wrap, so clip it to the panel and let it overflow. */
+        /* Code does not wrap: clip to the panel and pan within it. */
         cairo_save(cr);
         cairo_rectangle(cr, b->lay.x + 1, b->lay.y + 1,
                         b->lay.w - 2, b->lay.h - 2);
         cairo_clip(cr);
         nd_src(cr, CTP_TEXT);
-        cairo_move_to(cr, b->lay.x + ND_CODE_PAD_X, b->lay.y + pad_top);
+        cairo_move_to(cr, b->lay.x + ND_CODE_PAD_X - b->lay.hscroll,
+                      b->lay.y + pad_top);
         pango_cairo_show_layout(cr, b->lay.pl);
         cairo_restore(cr);
+
+        /* A fade at whichever edge has content beyond it: the only cue that
+         * the block scrolls at all. */
+        double visible = b->lay.w - 2 * ND_CODE_PAD_X;
+        double overflow = b->lay.natural_w - visible;
+        double fade = 28.0;
+
+        if (overflow > 0 && b->lay.hscroll < overflow - 0.5) {
+          cairo_pattern_t *p = cairo_pattern_create_linear(
+              b->lay.x + b->lay.w - fade, 0, b->lay.x + b->lay.w - 1, 0);
+          cairo_pattern_add_color_stop_rgba(p, 0, ND_R(CTP_MANTLE),
+                                            ND_G(CTP_MANTLE), ND_B(CTP_MANTLE), 0.0);
+          cairo_pattern_add_color_stop_rgba(p, 1, ND_R(CTP_MANTLE),
+                                            ND_G(CTP_MANTLE), ND_B(CTP_MANTLE), 1.0);
+          cairo_set_source(cr, p);
+          cairo_rectangle(cr, b->lay.x + b->lay.w - fade, b->lay.y + 1,
+                          fade - 1, b->lay.h - 2);
+          cairo_fill(cr);
+          cairo_pattern_destroy(p);
+        }
+        if (b->lay.hscroll > 0.5) {
+          cairo_pattern_t *p = cairo_pattern_create_linear(
+              b->lay.x + 1, 0, b->lay.x + fade, 0);
+          cairo_pattern_add_color_stop_rgba(p, 0, ND_R(CTP_MANTLE),
+                                            ND_G(CTP_MANTLE), ND_B(CTP_MANTLE), 1.0);
+          cairo_pattern_add_color_stop_rgba(p, 1, ND_R(CTP_MANTLE),
+                                            ND_G(CTP_MANTLE), ND_B(CTP_MANTLE), 0.0);
+          cairo_set_source(cr, p);
+          cairo_rectangle(cr, b->lay.x + 1, b->lay.y + 1, fade, b->lay.h - 2);
+          cairo_fill(cr);
+          cairo_pattern_destroy(p);
+        }
       }
       break;
     }

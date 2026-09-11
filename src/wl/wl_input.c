@@ -115,8 +115,10 @@ static void kb_modifiers(void *data, struct wl_keyboard *kb, uint32_t serial,
                          uint32_t group) {
   (void)kb; (void)serial;
   struct nd_input *in = data;
-  if (in->xkb_state)
-    xkb_state_update_mask(in->xkb_state, depressed, latched, locked, 0, 0, group);
+  if (!in->xkb_state) return;
+  xkb_state_update_mask(in->xkb_state, depressed, latched, locked, 0, 0, group);
+  in->shift_held = xkb_state_mod_name_is_active(in->xkb_state, XKB_MOD_NAME_SHIFT,
+                                                XKB_STATE_MODS_EFFECTIVE) > 0;
 }
 
 static void kb_repeat_info(void *data, struct wl_keyboard *kb, int32_t rate,
@@ -182,9 +184,13 @@ static void ptr_axis(void *data, struct wl_pointer *p, uint32_t time,
                      uint32_t axis, wl_fixed_t value) {
   (void)p; (void)time;
   struct nd_input *in = data;
-  if (axis != WL_POINTER_AXIS_VERTICAL_SCROLL) return;
-  in->pending.have_axis = true;
-  in->pending.axis_v    = wl_fixed_to_double(value);
+  if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+    in->pending.have_axis = true;
+    in->pending.axis_v    = wl_fixed_to_double(value);
+  } else if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
+    in->pending.have_haxis = true;
+    in->pending.axis_h     = wl_fixed_to_double(value);
+  }
 }
 
 static void ptr_axis_source(void *data, struct wl_pointer *p, uint32_t source) {
@@ -234,6 +240,22 @@ static void ptr_frame(void *data, struct wl_pointer *p) {
     in->px = f->x;
     in->py = f->y;
     nd_app_pointer_motion(in->app, f->x, f->y);
+  }
+
+  /* Sideways scrolling, and shift+wheel, pan a code fence rather than the
+   * page — matching how every other viewer treats an overflowing block. */
+  if (f->have_haxis && f->axis_h != 0.0) {
+    if (nd_app_pan(in->app, in->px, in->py, f->axis_h)) {
+      memset(f, 0, sizeof *f);
+      return;
+    }
+  }
+  if ((f->have_axis || f->have_v120) && in->shift_held) {
+    double dx = f->have_axis ? f->axis_v : (f->v120 / 120.0) * 40.0;
+    if (nd_app_pan(in->app, in->px, in->py, dx)) {
+      memset(f, 0, sizeof *f);
+      return;
+    }
   }
 
   if (f->have_axis || f->have_v120) {
