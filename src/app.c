@@ -52,6 +52,7 @@
 #define ND_GUIDE_ALPHA  0.80
 #define ND_GUIDE_TAU    0.050  /* it should arrive before you look for it */
 #define ND_GUIDE_INSET  6.0    /* never flush against the window edge */
+#define ND_GUIDE_STEP_INSET 12.0 /* where { and } land the stop they move to */
 
 /* Scrollbars stay solid this long after the last scroll, then fade. */
 #define ND_SB_HOLD_MS   800
@@ -183,7 +184,7 @@ void nd_app_scroll_settle(struct nd_app *app) {
  * from a dozen places. */
 static void guide_sync(struct nd_app *app) {
   if (!app->doc) return;
-  int idx = nd_doc_reading_at(app->doc, app->scroll.offset);
+  int idx = nd_doc_reading_at(app->doc, app->scroll.offset, (double)app->win.h);
   app->guide_idx = idx;
   if (idx < 0) return;
 
@@ -762,7 +763,8 @@ static void guide_step(struct nd_app *app, int delta) {
   if (n == 0) return;
 
   int idx = app->guide_idx;
-  if (idx < 0) idx = nd_doc_reading_at(app->doc, app->scroll.offset);
+  if (idx < 0) idx = nd_doc_reading_at(app->doc, app->scroll.offset,
+                                      (double)app->win.h);
   idx += delta;
   if (idx < 0) idx = 0;
   if ((uint32_t)idx >= n) idx = (int)n - 1;
@@ -771,7 +773,10 @@ static void guide_step(struct nd_app *app, int delta) {
   if (!nd_doc_reading_rect(app->doc, (uint32_t)idx, &x, &y, &w, &h)) return;
 
   app->guide_idx = idx;
-  app->scroll.target = y - app->win.h * 0.12;
+  /* Just under the top edge. Landing it further down would leave room above
+   * for a short preceding stop to be wholly visible too -- and that one, being
+   * first, would take the marker, so } would appear to do nothing. */
+  app->scroll.target = y - ND_GUIDE_STEP_INSET;
   scroll_clamp(app);
   app->scroll.animating = true;
   note_scroll_activity(app);

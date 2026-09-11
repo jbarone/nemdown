@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
   cairo_translate(cr, sidebar_w, 0);
   /* The reading marker, drawn the way app.c draws it, so what this harness
    * shows is what the window shows. */
-  int stop = nd_doc_reading_at(doc, scroll);
+  int stop = nd_doc_reading_at(doc, scroll, (double)h);
   double sx, sy, sw, sh;
   if (stop >= 0 && nd_doc_reading_rect(doc, (uint32_t)stop, &sx, &sy, &sw, &sh)) {
     double gx = nd_doc_column_x(doc) - 22.0;

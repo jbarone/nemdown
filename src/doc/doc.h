@@ -191,9 +191,12 @@ double nd_doc_column_x(const nd_doc *d);
 bool nd_doc_reading_rect(const nd_doc *d, uint32_t i, double *x, double *y,
                          double *w, double *h);
 
-/* The stop being read at a document y: the first one not yet scrolled past.
- * Returns -1 for a document with no readable content. */
-int nd_doc_reading_at(const nd_doc *d, double doc_y);
+/* The stop being read in the viewport [doc_y, doc_y + viewport_h): the first
+ * one WHOLLY visible, so the marker never points at a block that is cut off.
+ * When nothing fits -- a block taller than the window, or the end of the
+ * document -- it is whichever visible block fills most of the viewport.
+ * Returns -1 only for a document with no readable content. */
+int nd_doc_reading_at(const nd_doc *d, double doc_y, double viewport_h);
 
 const nd_props *nd_doc_props(const nd_doc *d);
 const nd_toc   *nd_doc_toc(const nd_doc *d);

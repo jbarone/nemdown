@@ -79,33 +79,41 @@ void nd_reading_free(struct nd_reading *r) {
   r->n = r->cap = 0;
 }
 
-/* How much of a stop has to remain on screen for it to still be the one being
- * read. About a line: below that there is nothing left to read, and keeping
- * the marker there points at text that has already gone. */
-#define ND_READ_MIN_VISIBLE 24.0
-
-int nd_reading_at(const struct nd_reading *r, double doc_y) {
+int nd_reading_at(const struct nd_reading *r, double doc_y, double view_h) {
   if (r->n == 0) return -1;
+  if (view_h <= 0.0) return 0;
 
-  /* Find the first stop not entirely above the fold... */
+  double top = doc_y, bot = doc_y + view_h;
+
+  /* First stop not entirely above the fold. */
   uint32_t lo = 0, hi = r->n;
   while (lo < hi) {
     uint32_t m = (lo + hi) / 2;
-    if (r->stops[m].y + r->stops[m].h <= doc_y) lo = m + 1;
+    if (r->stops[m].y + r->stops[m].h <= top) lo = m + 1;
     else hi = m;
   }
 
-  /* ...then hand on while only a sliver of it is left. Without this a
-   * paragraph stays current until its last pixel leaves, so the marker ends up
-   * beside text that is no longer on screen -- which is worse than useless,
-   * because it points confidently at nothing. Each step strictly increases the
-   * bottom edge, so this advances at most a couple of times. */
-  while (lo < r->n) {
-    double h = r->stops[lo].h;
-    double want = h < ND_READ_MIN_VISIBLE ? h : ND_READ_MIN_VISIBLE;
-    if (r->stops[lo].y + h - doc_y >= want) break;
-    lo++;
-  }
+  /* The stop being read is the first one WHOLLY on screen. Marking a block
+   * with any part of it cut off points at text that cannot be read, which is
+   * the whole failure this is meant to avoid -- so a partly-visible block is
+   * passed over rather than held on to. The scan is bounded by what fits in
+   * the viewport. */
+  for (uint32_t i = lo; i < r->n && r->stops[i].y < bot; i++)
+    if (r->stops[i].y >= top && r->stops[i].y + r->stops[i].h <= bot)
+      return (int)i;
 
-  return (int)(lo < r->n ? lo : r->n - 1);
+  /* Nothing fits. Two ways to get here, and the same answer serves both: a
+   * block taller than the window, which can never be whole on screen, and the
+   * last block of a document scrolled so its end is cut off. Fall back to
+   * whichever visible block occupies the most of the viewport, so the marker
+   * stays on the thing actually being read instead of vanishing. */
+  int best = (int)(lo < r->n ? lo : r->n - 1);
+  double best_vis = -1.0;
+  for (uint32_t i = lo; i < r->n && r->stops[i].y < bot; i++) {
+    double s_top = r->stops[i].y > top ? r->stops[i].y : top;
+    double s_bot = r->stops[i].y + r->stops[i].h;
+    if (s_bot > bot) s_bot = bot;
+    if (s_bot - s_top > best_vis) { best_vis = s_bot - s_top; best = (int)i; }
+  }
+  return best;
 }

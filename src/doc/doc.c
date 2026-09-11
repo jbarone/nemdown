@@ -564,8 +564,8 @@ bool nd_doc_reading_rect(const nd_doc *d, uint32_t i, double *x, double *y,
   return true;
 }
 
-int nd_doc_reading_at(const nd_doc *d, double doc_y) {
-  return nd_reading_at(&d->reading, doc_y);
+int nd_doc_reading_at(const nd_doc *d, double doc_y, double viewport_h) {
+  return nd_reading_at(&d->reading, doc_y, viewport_h);
 }
 
 int nd_toc_active(const nd_doc *d, double scroll_y) {

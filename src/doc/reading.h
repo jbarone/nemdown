@@ -27,7 +27,8 @@ struct nd_reading {
 void nd_reading_build(struct nd_reading *r, const nd_block *root);
 void nd_reading_free(struct nd_reading *r);
 
-/* The stop being read at a document y, or -1 when the document has none. */
-int nd_reading_at(const struct nd_reading *r, double doc_y);
+/* The stop being read in the viewport [doc_y, doc_y + view_h): the first one
+ * wholly on screen. Returns -1 only when the document has no stops. */
+int nd_reading_at(const struct nd_reading *r, double doc_y, double view_h);
 
 #endif /* NEMDOWN_READING_H */
