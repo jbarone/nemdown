@@ -135,6 +135,44 @@ static void rewrite_embeds(const char *src, size_t len, struct buf *out,
       continue;
     }
 
+    /* A `$$` display-math block, folded onto one line.
+     *
+     * md4c's LATEXMATHSPANS is a SPAN extension, so `$$...$$` is only
+     * recognised inside a paragraph -- but block structure is decided first,
+     * and a multi-line formula is full of lines that mean something to the
+     * block parser. A lone `=` line is a setext heading underline, so
+     *
+     *     $$
+     *     A x = b
+     *     =
+     *     c
+     *     $$
+     *
+     * turns the whole formula into an H1. `-` and `#` lines do their own
+     * damage. Folding the newlines to spaces makes it one paragraph, which is
+     * the shape the span extension needs, and costs nothing downstream because
+     * the substitution is length-preserving: no edit record, and every
+     * task-mark offset still points where it did. */
+    if (at_line_start && line_is(src + i, len - i, "$$")) {
+      size_t close = next_line(src, len, i);
+      while (close < len && !line_is(src + close, len - close, "$$"))
+        close = next_line(src, len, close);
+
+      if (close < len) {
+        size_t end = next_line(src, len, close);
+        for (size_t k = i; k < end; k++) {
+          char c = src[k];
+          /* Keep the block's final newline: it still has to end a paragraph. */
+          if (c == '\n' && k + 1 != end) c = ' ';
+          buf_put(out, &c, 1);
+        }
+        i = end;
+        at_line_start = true;
+        continue;
+      }
+      /* No closing `$$`: leave it alone and let it render as text. */
+    }
+
     /* Inline code span: copy the backtick run and everything to its match. */
     if (src[i] == '`') {
       size_t run = 0;

@@ -2,6 +2,8 @@
 
 #include "doc/paint.h"
 
+#include "doc/math.h"
+
 #include <pango/pangocairo.h>
 
 #include "doc/callout.h"
@@ -244,6 +246,18 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
       break;
 
     case ND_MATH_BLOCK: {
+      if (b->lay.math) {
+        /* Typeset: no panel and no label. A formula that is actually set
+         * belongs in the page like a paragraph does, and boxing it would say
+         * the opposite of what the box used to say. */
+        nd_src(cr, CTP_TEXT);
+        double x = b->lay.x + (b->lay.w - b->lay.math_w) / 2;
+        double baseline = b->lay.y + (b->lay.h - b->lay.math_h - b->lay.math_d) / 2
+                        + b->lay.math_h;
+        nd_math_paint(b->lay.math, cr, x, baseline);
+        break;
+      }
+
       nd_src(cr, CTP_SURFACE0);
       rounded_rect(cr, b->lay.x, b->lay.y, b->lay.w, b->lay.h, 6.0);
       cairo_fill(cr);

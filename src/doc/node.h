@@ -65,6 +65,11 @@ typedef struct {
   double  img_w, img_h;
   double  natural_w;    /* code blocks: unwrapped width, for overflow */
   double  hscroll;      /* code blocks: horizontal pan offset */
+  /* Display math, when a font with a MATH table is installed. Arena-owned, so
+   * it dies with the tree and needs no freeing here; `pl` stays the fallback
+   * for when it is NULL. */
+  struct nd_box *math;
+  double  math_w, math_h, math_d;
 } nd_layout;
 
 typedef struct nd_block nd_block;

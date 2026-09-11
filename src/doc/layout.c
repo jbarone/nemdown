@@ -2,6 +2,8 @@
 
 #include "doc/layout.h"
 
+#include "doc/math.h"
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,6 +32,21 @@
 #define ND_MATH_PAD_X    16.0
 #define ND_MATH_PAD_Y    12.0
 
+/* Pango calls this for every shape attribute it meets, with the current point
+ * already at the shape's origin on the baseline. That is exactly the contract
+ * nd_math_paint wants, so an inline formula needs no coordinate juggling: it
+ * flows, wraps and gets selected as if it were a very wide glyph. */
+static void math_shape_renderer(cairo_t *cr, PangoAttrShape *attr,
+                                gboolean do_path, gpointer data) {
+  (void)data;
+  if (do_path) return;   /* we paint directly; there is no path to contribute */
+  const struct nd_box *box = attr->data;
+  if (!box) return;
+  double x, y;
+  cairo_get_current_point(cr, &x, &y);
+  nd_math_paint(box, cr, x, y);
+}
+
 PangoContext *nd_pango_context_new(void) {
   PangoFontMap *fm = pango_cairo_font_map_get_default();
   PangoContext *pctx = pango_font_map_create_context(fm);
@@ -51,6 +68,8 @@ PangoContext *nd_pango_context_new(void) {
   cairo_font_options_set_antialias(fo, CAIRO_ANTIALIAS_GRAY);
   pango_cairo_context_set_font_options(pctx, fo);
   cairo_font_options_destroy(fo);
+
+  pango_cairo_context_set_shape_renderer(pctx, math_shape_renderer, NULL, NULL);
 
   return pctx;
 }
@@ -85,7 +104,8 @@ static PangoAttribute *bg(uint32_t hex) {
 
 /* Runs arrive sorted by nesting depth, outermost first, so inner styles are
  * inserted later and win same-type conflicts. */
-static PangoAttrList *attrs_for(const nd_inline *inl, const nd_style *st,
+static PangoAttrList *attrs_for(struct nd_layout_ctx *ctx,
+                                const nd_inline *inl, const nd_style *st,
                                 double font_scale) {
   PangoAttrList *al = pango_attr_list_new();
 
@@ -132,10 +152,52 @@ static PangoAttrList *attrs_for(const nd_inline *inl, const nd_style *st,
     }
     /* Innermost-looking styles last so they win. */
     if (f & ND_RUN_MATH) {
-      attr_add(al, pango_attr_family_new(ND_MONO), s, e);
-      attr_add(al, pango_attr_style_new(PANGO_STYLE_ITALIC), s, e);
-      attr_add(al, fg(CTP_LAVENDER), s, e);
-      attr_add(al, bg(CTP_SURFACE0), s, e);
+      /* Typeset it and hand Pango a shape attribute standing in for the source
+       * bytes: the formula then participates in line breaking and selection as
+       * one unit, and the renderer above draws it when the line is painted.
+       * The LaTeX source stays in the layout text, which is what keeps search
+       * and copy working on `\alpha` rather than on a glyph nobody can type. */
+      struct nd_box *mb = NULL;
+      if (ctx && ctx->arena && nd_math_available() && inl->text && e > s) {
+        nd_math_list *ml = nd_math_parse(ctx->arena, inl->text + s, e - s);
+        mb = nd_math_layout(ctx->arena, ml, st->size * font_scale, false);
+      }
+      if (mb) {
+        nd_math_metrics m;
+        nd_math_measure(mb, &m);
+
+        /* Pango draws a shape once per CHARACTER in its range, so attaching
+         * one to the whole formula repeats it once per byte of source. The
+         * shape carrying the box therefore covers exactly the first character,
+         * and the rest of the source is covered by zero-width shapes whose
+         * NULL data makes the renderer draw nothing. The bytes stay in the
+         * layout, so `/` search and Ctrl-C still see the LaTeX a person can
+         * actually type. */
+        uint32_t first = s + 1;
+        while (first < e && ((unsigned char)inl->text[first] & 0xC0) == 0x80)
+          first++;
+
+        PangoRectangle ink, log;
+        log.x = 0;
+        log.y = (int)(-m.height * PANGO_SCALE);
+        log.width = (int)(m.width * PANGO_SCALE);
+        log.height = (int)((m.height + m.depth) * PANGO_SCALE);
+        ink = log;
+        attr_add(al, pango_attr_shape_new_with_data(&ink, &log, mb, NULL, NULL),
+                 s, first);
+
+        if (first < e) {
+          PangoRectangle none = {0, 0, 0, 0};
+          attr_add(al, pango_attr_shape_new_with_data(&none, &none, NULL, NULL,
+                                                      NULL),
+                   first, e);
+        }
+      } else {
+        attr_add(al, pango_attr_family_new(ND_MONO), s, e);
+        attr_add(al, pango_attr_style_new(PANGO_STYLE_ITALIC), s, e);
+        attr_add(al, fg(CTP_LAVENDER), s, e);
+        attr_add(al, bg(CTP_SURFACE0), s, e);
+      }
     }
     if (f & ND_RUN_CODE) {
       attr_add(al, pango_attr_family_new(ND_MONO), s, e);
@@ -175,7 +237,7 @@ PangoLayout *nd_layout_for(struct nd_layout_ctx *ctx, const nd_inline *inl,
   }
   pango_layout_set_text(pl, inl->text ? inl->text : "", (int)len);
 
-  PangoAttrList *al = attrs_for(inl, st, ctx->font_scale);
+  PangoAttrList *al = attrs_for(ctx, inl, st, ctx->font_scale);
   pango_layout_set_attributes(pl, al);
   pango_attr_list_unref(al);
 
@@ -289,11 +351,31 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
 
     case ND_MATH_BLOCK: {
       const nd_style *st = &nd_styles[ND_ST_MATH];
-      b->lay.pl = nd_layout_for(ctx, &b->inl, st, w - 2 * ND_MATH_PAD_X);
-      pango_layout_set_alignment(b->lay.pl, PANGO_ALIGN_CENTER);
-      int pw, ph;
-      pango_layout_get_pixel_size(b->lay.pl, &pw, &ph);
-      b->lay.h = ph + 2 * ND_MATH_PAD_Y;
+      b->lay.math = NULL;
+
+      /* Typeset it when a MATH-table font exists; otherwise fall through to
+       * the styled-source panel, which is what this did before there was a
+       * typesetter and is still the honest answer with no font installed. */
+      if (ctx->arena && nd_math_available() && b->inl.text && b->inl.len) {
+        nd_math_list *ml = nd_math_parse(ctx->arena, b->inl.text, b->inl.len);
+        b->lay.math = nd_math_layout(ctx->arena, ml, st->size * ctx->font_scale,
+                                     true);
+      }
+
+      if (b->lay.math) {
+        nd_math_metrics m;
+        nd_math_measure(b->lay.math, &m);
+        b->lay.math_w = m.width;
+        b->lay.math_h = m.height;
+        b->lay.math_d = m.depth;
+        b->lay.h = m.height + m.depth + 2 * ND_MATH_PAD_Y;
+      } else {
+        b->lay.pl = nd_layout_for(ctx, &b->inl, st, w - 2 * ND_MATH_PAD_X);
+        pango_layout_set_alignment(b->lay.pl, PANGO_ALIGN_CENTER);
+        int pw, ph;
+        pango_layout_get_pixel_size(b->lay.pl, &pw, &ph);
+        b->lay.h = ph + 2 * ND_MATH_PAD_Y;
+      }
       y += b->lay.h;
       break;
     }
