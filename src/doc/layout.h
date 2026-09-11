@@ -5,13 +5,15 @@
 
 #include <pango/pangocairo.h>
 
+#include "doc/arena.h"
 #include "doc/node.h"
 #include "ui/typography.h"
 
 struct nd_layout_ctx {
-  PangoContext *pctx;
-  double        font_scale;
-  double        column_x, column_w;
+  PangoContext    *pctx;
+  struct nd_arena *arena; /* for highlighter token spans */
+  double           font_scale;
+  double           column_x, column_w;
 };
 
 /* Builds the shared Pango context. Metrics hinting is OFF, which is what makes

@@ -135,6 +135,7 @@ double nd_doc_layout(nd_doc *d, double viewport_w, double font_scale) {
 
   struct nd_layout_ctx ctx = {
     .pctx = d->pctx,
+    .arena = &d->arena,
     .font_scale = font_scale,
     .column_x = col_x,
     .column_w = col_w,

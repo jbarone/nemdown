@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "doc/callout.h"
+#include "doc/highlight.h"
 #include "ui/theme.h"
 
 #define ND_LIST_INDENT   28.0
@@ -222,6 +223,21 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
                        .runs = NULL, .nruns = 0};
       /* No wrapping: code overflows horizontally and is clipped, like Obsidian. */
       b->lay.pl = nd_layout_for(ctx, &tmp, st, -1);
+
+      /* Highlighting runs once, here, and is cached in the retained layout. */
+      nd_tokspan *toks = NULL;
+      uint32_t ntok = nd_highlight(ctx->arena, b->code_lang, b->code_text,
+                                   b->code_len, &toks);
+      if (ntok) {
+        PangoAttrList *al = pango_layout_get_attributes(b->lay.pl);
+        for (uint32_t t = 0; t < ntok; t++) {
+          uint32_t kind = toks[t].kind;
+          attr_add(al, fg(nd_tok_colors[kind]), toks[t].start, toks[t].end);
+          if (nd_tok_italic[kind])
+            attr_add(al, pango_attr_style_new(PANGO_STYLE_ITALIC),
+                     toks[t].start, toks[t].end);
+        }
+      }
       int pw, ph;
       pango_layout_get_pixel_size(b->lay.pl, &pw, &ph);
       b->lay.natural_w = pw;
