@@ -127,6 +127,14 @@ These were each a real bug; the comments in the code say so at the site.
   `body_offset` directly.
 - **Inline runs overlap and are sorted by nesting depth.** Do not flatten them
   into a style cross-product.
+- **A tight list item has no `MD_BLOCK_P`**, so the paragraph is synthesised —
+  and it must be synthesised on the first *inline event*, not the first text.
+  `inl_begin()` resets the span stack, so a span opened before the leaf existed
+  (`- **bold lead-in** rest`, or an item starting with a link) had its frame
+  wiped and vanished on `leave_span`. The markers were consumed either way, so
+  the emphasis disappeared while the text stayed — invisible in fixtures,
+  obvious in any real document. `MD_SPAN_IMG` is the exception: it builds its
+  own block, and forcing a leaf leaves an empty paragraph beside it.
 - **Soft breaks fold to spaces**, so a paragraph's source line boundary is only
   recoverable via `nd_inline.first_break`. Callout titles depend on it.
 - **`inotify` watches the parent directory, not the file**, because editors save

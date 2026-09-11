@@ -222,6 +222,23 @@ static void implicit_close(struct builder *b) {
   b->leaf_implicit = false;
 }
 
+/* Synthesise that paragraph. This must happen on the first INLINE EVENT, not
+ * on the first text: inl_begin() resets the span stack, so a span opened while
+ * the leaf was still missing -- `- **bold lead-in** rest`, or an item that
+ * starts with a link or a code span -- had its frame wiped out from under it
+ * and vanished on leave_span, which found an empty stack and returned. The
+ * markers were consumed either way, so the emphasis silently disappeared while
+ * the text stayed. Every bullet in a tight list beginning with bold, and every
+ * item that is a bare link, was affected. */
+static void ensure_leaf(struct builder *b) {
+  if (b->leaf || b->sp <= 0) return;
+  nd_block *para = node_new(b, ND_PARA);
+  adopt(b, para);
+  b->leaf = para;
+  b->leaf_implicit = true;
+  inl_begin(b);
+}
+
 static int enter_block(MD_BLOCKTYPE type, void *detail, void *ud) {
   struct builder *b = ud;
   implicit_close(b);
@@ -377,6 +394,11 @@ static int leave_block(MD_BLOCKTYPE type, void *detail, void *ud) {
 
 static int enter_span(MD_SPANTYPE type, void *detail, void *ud) {
   struct builder *b = ud;
+  /* Before the frame is pushed, so inl_begin()'s reset cannot discard it.
+   * MD_SPAN_IMG is excluded: it builds its own block and suppresses its text,
+   * so forcing a leaf would leave an empty paragraph beside the image of an
+   * item that is nothing but an image, and that renders as a blank gap. */
+  if (type != MD_SPAN_IMG) ensure_leaf(b);
   if (b->spsp >= MAX_SPAN_DEPTH) { b->span_overflow++; return 0; }
 
   struct span_frame *f = &b->spans[b->spsp];
@@ -476,14 +498,8 @@ static int text_cb(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size, void *ud
     }
   }
 
-  if (!b->leaf) {
-    if (b->sp <= 0) return 0;
-    nd_block *para = node_new(b, ND_PARA);
-    adopt(b, para);
-    b->leaf = para;
-    b->leaf_implicit = true;
-    inl_begin(b);
-  }
+  ensure_leaf(b);
+  if (!b->leaf) return 0;
 
   switch (type) {
     case MD_TEXT_NULLCHAR:
