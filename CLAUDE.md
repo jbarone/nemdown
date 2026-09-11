@@ -23,14 +23,17 @@ src/app.c         app state, scrolling, dirty flags, action dispatch
 src/wl/           the Wayland shell: connection, window, buffers, input
 src/ui/           theme, typography, sidebar — the chrome around the document
 src/doc/          the document engine; doc.h is the ONLY header the shell uses
-test/             headless harnesses and fixtures; no compositor required
-tools/            lsan.supp
+test/             headless harnesses, assertion checks, fixtures; no compositor
+tools/            lsan.supp, valgrind.supp
 ```
 
 ## Commands
 
 - Build and run: `make` then `./build/debug/nemdown file.md`, or `make run FILE=x.md`.
-- Headless engine checks: `make test`.
+- Headless engine checks: `make test`. It runs the two assertion harnesses
+  first — `build/check_utf8` and `build/check_pathguard` — then parses every
+  fixture. The fixture pass only reports; those two actually fail the build,
+  because a regression in either is a hang or a path escape.
 - Memory: `make asan`, then run with `LSAN_OPTIONS=suppressions=$PWD/tools/lsan.supp`.
   Without the suppressions, fontconfig's process-lifetime caches bury the signal.
 - Also `make valgrind`. It complements the sanitizers rather than duplicating
@@ -79,6 +82,23 @@ of any image it references are all untrusted input. Three rules follow:
 - **Bytes are scrubbed to well-formed UTF-8 at load** (`src/util/utf8.c`). The
   scrub is length-preserving on purpose: the checkbox write indexes the real
   file by byte, so a replacement that changed length would retarget it.
+
+The scrub and the guard are the two functions here with the least margin for
+error, so neither is trusted to review alone: `test/check_utf8.c` sweeps
+26.8M inputs differentially against `g_utf8_validate`, and
+`test/check_pathguard.c` runs the escapes against a real symlink tree it
+builds and tears down. **If you change either function, run `make test` and
+then break it on purpose to confirm the harness still fails** — five
+mutations were checked when they were written, and a sweep that cannot fail
+is worth nothing.
+
+Two known gaps, both judged not worth the cost so far. Filenames are not
+scrubbed, so invalid bytes in a path reach `xdg_toplevel_set_title`; nothing
+unscrubbed reaches Pango, because `nd_sidebar_paint` ignores its `title`
+argument. And the guard checks a path that is opened afterwards by name, so
+a symlink swapped in between is a race — the static attack, a symlink
+committed to the tree, is caught, since `realpath` resolves it before the
+comparison.
 
 ## Things that are easy to get wrong
 
