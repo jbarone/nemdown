@@ -24,7 +24,7 @@ struct nd_pointer_frame {
   bool     have_stop;
   uint32_t source;
   bool     have_button;
-  uint32_t button, btn_state, serial;
+  uint32_t button, btn_state, serial, time;
 };
 
 struct nd_input {

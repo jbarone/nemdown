@@ -62,6 +62,11 @@ struct nd_app {
   bool     dragging;       /* divider drag is modal, see nd_app_pointer_button */
   double   drag_start_x, drag_start_w;
 
+  bool     selecting;      /* left button held, dragging a text selection */
+  uint32_t last_click_ms;
+  int      click_count;
+  double   last_click_x, last_click_y;
+
   double   font_scale;
 };
 
@@ -75,7 +80,8 @@ void nd_app_resized(struct nd_app *app, int w, int h);
 void nd_app_scale_changed(struct nd_app *app, double scale);
 void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat);
 void nd_app_pointer_motion(struct nd_app *app, double x, double y);
-void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed);
+void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed,
+                           uint32_t time_ms);
 void nd_app_pointer_leave(struct nd_app *app);
 void nd_app_zoom(struct nd_app *app, double scale);
 void nd_app_scroll_by(struct nd_app *app, double dy, bool immediate);

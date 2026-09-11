@@ -112,6 +112,19 @@ bool nd_doc_hit_test(nd_doc *d, double x, double doc_y, nd_hit *out);
 /* Writes a single byte to the source file, flipping a task checkbox. */
 bool nd_doc_toggle_task(nd_doc *d, uint32_t source_offset, bool now_checked);
 
+/* ---- selection ---------------------------------------------------------- */
+
+void  nd_doc_select_begin(nd_doc *d, double x, double doc_y);
+void  nd_doc_select_extend(nd_doc *d, double x, double doc_y);
+void  nd_doc_select_word(nd_doc *d, double x, double doc_y);
+void  nd_doc_select_block(nd_doc *d, double x, double doc_y);
+void  nd_doc_select_clear(nd_doc *d);
+bool  nd_doc_has_selection(const nd_doc *d);
+/* Rendered text, not markdown source — see select.h. Caller frees with free(). */
+char *nd_doc_select_text(nd_doc *d);
+/* The document's own bytes, borrowed. */
+const char *nd_doc_source(const nd_doc *d);
+
 /* ---- sidebar data ------------------------------------------------------- */
 
 /* The sidebar draws text too; sharing one context keeps font options and the

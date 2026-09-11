@@ -13,6 +13,7 @@
 #include "doc/layout.h"
 #include "doc/paint.h"
 #include "doc/parse.h"
+#include "doc/select.h"
 #include "doc/postprocess.h"
 #include "doc/preprocess.h"
 #include "doc/toc.h"
@@ -39,6 +40,7 @@ struct nd_doc {
   char    *title;
 
   struct nd_image_cache *images; /* outlives reparse: see images.h */
+  nd_selection sel;
 };
 
 static char *read_file(const char *path, size_t *len, char **err) {
@@ -70,6 +72,7 @@ static bool rebuild(nd_doc *d, char **err) {
   d->root = NULL;
   d->laid_out = false;
 
+  memset(&d->sel, 0, sizeof d->sel); /* block indices die with the tree */
   nd_preprocess(&d->arena, d->raw, d->raw_len, &d->src);
 
   d->root = nd_parse(&d->arena, &d->src);
@@ -174,7 +177,58 @@ void nd_doc_set_scale(nd_doc *d, double scale) {
 
 void nd_doc_paint(nd_doc *d, cairo_t *cr, double scroll_y, double viewport_h) {
   if (!d->laid_out) return;
+
+  /* Selection goes down first, so glyphs sit on top of it. */
+  if (d->sel.active) {
+    cairo_save(cr);
+    cairo_translate(cr, 0, -scroll_y);
+    nd_select_paint(cr, d->root, &d->sel);
+    cairo_restore(cr);
+  }
   nd_paint_tree(cr, d->root, scroll_y, viewport_h, d->images);
+}
+
+void nd_doc_select_begin(nd_doc *d, double x, double doc_y) {
+  nd_point p;
+  if (!d->laid_out || !nd_select_point_at(d->root, x, doc_y, &p)) {
+    nd_doc_select_clear(d);
+    return;
+  }
+  d->sel.anchor = d->sel.focus = p;
+  d->sel.active = true;
+}
+
+void nd_doc_select_extend(nd_doc *d, double x, double doc_y) {
+  nd_point p;
+  if (!d->sel.active || !d->laid_out) return;
+  if (nd_select_point_at(d->root, x, doc_y, &p)) d->sel.focus = p;
+}
+
+void nd_doc_select_word(nd_doc *d, double x, double doc_y) {
+  nd_point p;
+  if (!d->laid_out || !nd_select_point_at(d->root, x, doc_y, &p)) return;
+  nd_select_word_at(d->root, p, &d->sel.anchor, &d->sel.focus);
+  d->sel.active = true;
+}
+
+void nd_doc_select_block(nd_doc *d, double x, double doc_y) {
+  nd_point p;
+  if (!d->laid_out || !nd_select_point_at(d->root, x, doc_y, &p)) return;
+  nd_select_block_at(d->root, p, &d->sel.anchor, &d->sel.focus);
+  d->sel.active = true;
+}
+
+void nd_doc_select_clear(nd_doc *d) {
+  memset(&d->sel, 0, sizeof d->sel);
+}
+
+bool nd_doc_has_selection(const nd_doc *d) {
+  return d->sel.active && d->sel.anchor.valid && d->sel.focus.valid;
+}
+
+char *nd_doc_select_text(nd_doc *d) {
+  if (!nd_doc_has_selection(d)) return NULL;
+  return nd_select_copy(d->root, &d->sel);
 }
 
 /* Top-level block index in the high bits, pixels into that block in the low
@@ -234,6 +288,8 @@ bool nd_doc_toggle_task(nd_doc *d, uint32_t source_offset, bool now_checked) {
 }
 
 struct _PangoContext *nd_doc_pango_context(const nd_doc *d) { return d->pctx; }
+
+const char *nd_doc_source(const nd_doc *d) { return d->raw; }
 
 const nd_props *nd_doc_props(const nd_doc *d) { return &d->props; }
 const nd_toc   *nd_doc_toc(const nd_doc *d)   { return &d->toc; }

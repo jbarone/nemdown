@@ -38,6 +38,7 @@
 static void scroll_clamp(struct nd_app *app);
 static void sidebar_animate(struct nd_app *app, uint32_t time_ms);
 static void reload_document(struct nd_app *app);
+static void copy_to_clipboard(const char *text);
 
 static void mark(struct nd_app *app, unsigned bits) {
   app->dirty |= bits;
@@ -139,9 +140,43 @@ void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat) {
   double line = app->scroll.line_height;
   double page = (double)app->win.h * 0.9;
 
+  bool ctrl = app->input.xkb_state &&
+              xkb_state_mod_name_is_active(app->input.xkb_state,
+                                           XKB_MOD_NAME_CTRL,
+                                           XKB_STATE_MODS_EFFECTIVE);
+
+  if (ctrl) {
+    switch (sym) {
+      case XKB_KEY_c:
+      case XKB_KEY_C: {
+        /* With nothing selected, copy the whole document source — the bytes
+         * are already in memory and it is the obvious thing to want. */
+        char *text = nd_doc_select_text(app->doc);
+        if (text) {
+          copy_to_clipboard(text);
+          free(text);
+        } else {
+          copy_to_clipboard(nd_doc_source(app->doc));
+        }
+        return;
+      }
+      case XKB_KEY_d: nd_app_scroll_by(app, page / 2, false);  return;
+      case XKB_KEY_u: nd_app_scroll_by(app, -page / 2, false); return;
+      default: break;
+    }
+  }
+
   switch (sym) {
-    case XKB_KEY_q:
     case XKB_KEY_Escape:
+      if (nd_doc_has_selection(app->doc)) {
+        nd_doc_select_clear(app->doc);
+        mark(app, ND_DIRTY_DOC);
+        break;
+      }
+      nd_app_quit(app);
+      break;
+
+    case XKB_KEY_q:
       nd_app_quit(app);
       break;
 
@@ -245,6 +280,41 @@ static void reload_document(struct nd_app *app) {
   mark(app, ND_DIRTY_ALL | ND_DIRTY_RELAYOUT);
 }
 
+/* Hands text to wl-copy rather than implementing wl_data_source. Being a
+ * clipboard source means servicing send(mime, fd) writes that can block on a
+ * slow receiver, which has to be folded non-blocking into the poll loop —
+ * real protocol work for no user-visible difference. wl-clipboard is already
+ * part of this desktop. */
+static void copy_to_clipboard(const char *text) {
+  if (!text || !*text) return;
+
+  int fds[2];
+  if (pipe(fds) != 0) return;
+
+  posix_spawn_file_actions_t fa;
+  posix_spawn_file_actions_init(&fa);
+  posix_spawn_file_actions_adddup2(&fa, fds[0], STDIN_FILENO);
+  posix_spawn_file_actions_addclose(&fa, fds[1]);
+
+  char *argv[] = {(char *)"wl-copy", NULL};
+  extern char **environ;
+  pid_t pid;
+  int rc = posix_spawnp(&pid, "wl-copy", &fa, NULL, argv, environ);
+  posix_spawn_file_actions_destroy(&fa);
+  close(fds[0]);
+
+  if (rc != 0) { close(fds[1]); nd_warn("wl-copy not available"); return; }
+
+  size_t len = strlen(text), off = 0;
+  while (off < len) {
+    ssize_t n = write(fds[1], text + off, len - off);
+    if (n <= 0) break;
+    off += (size_t)n;
+  }
+  close(fds[1]);
+  /* wl-copy daemonises to own the selection; do not wait for it. */
+}
+
 /* posix_spawn with an argv array, never a shell string: a document can contain
  * any URL it likes and none of it should reach a shell. */
 static void open_external(const char *url) {
@@ -269,6 +339,13 @@ static double content_x(const struct nd_app *app, double x) {
 
 void nd_app_pointer_motion(struct nd_app *app, double x, double y) {
   if (!app->doc) return;
+
+  if (app->selecting) {
+    nd_doc_select_extend(app->doc, content_x(app, x), content_y(app, y));
+    nd_cursor_set(app, ND_CURSOR_TEXT);
+    mark(app, ND_DIRTY_DOC);
+    return;
+  }
 
   /* Drag is modal: while it is running, nothing else is hit-tested. Otherwise
    * a fast drag outruns the divider and the hit test loses track of it. */
@@ -328,13 +405,25 @@ void nd_app_pointer_motion(struct nd_app *app, double x, double y) {
   nd_cursor_set(app, shape);
 }
 
-void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed) {
+void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed,
+                           uint32_t time_ms) {
   if (!app->doc) return;
 
   if (!pressed) {
     app->dragging = false;
+    app->selecting = false;
     return;
   }
+
+  /* Multi-click: same spot AND within the usual double-click window. Without
+   * the time check, two slow clicks in one place would read as a double. */
+  bool near = fabs(x - app->last_click_x) < 4.0 &&
+              fabs(y - app->last_click_y) < 4.0;
+  bool soon = (time_ms - app->last_click_ms) < 400;
+  app->click_count = (near && soon) ? app->click_count + 1 : 1;
+  app->last_click_ms = time_ms;
+  app->last_click_x = x;
+  app->last_click_y = y;
 
   if (app->sidebar_visible && fabs(x - app->sidebar_w) <= ND_DIVIDER_GRAB) {
     app->dragging = true;
@@ -356,9 +445,22 @@ void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed)
     return;
   }
 
+  double cx = content_x(app, x), cy = content_y(app, y);
+
   nd_hit hit;
-  if (!nd_doc_hit_test(app->doc, content_x(app, x), content_y(app, y), &hit))
+  if (!nd_doc_hit_test(app->doc, cx, cy, &hit)) {
+    /* Nothing actionable under the pointer: begin a text selection. */
+    if (app->click_count == 2)      nd_doc_select_word(app->doc, cx, cy);
+    else if (app->click_count >= 3) nd_doc_select_block(app->doc, cx, cy);
+    else {
+      nd_doc_select_begin(app->doc, cx, cy);
+      app->selecting = true;
+    }
+    mark(app, ND_DIRTY_DOC);
     return;
+  }
+
+  nd_doc_select_clear(app->doc);
 
   switch (hit.kind) {
     case ND_HIT_LINK:

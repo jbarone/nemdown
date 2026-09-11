@@ -168,12 +168,13 @@ static void ptr_motion(void *data, struct wl_pointer *p, uint32_t time,
 
 static void ptr_button(void *data, struct wl_pointer *p, uint32_t serial,
                        uint32_t time, uint32_t button, uint32_t state) {
-  (void)p; (void)time;
+  (void)p;
   struct nd_input *in = data;
   in->pending.have_button = true;
   in->pending.button      = button;
   in->pending.btn_state   = state;
   in->pending.serial      = serial;
+  in->pending.time        = time;
 }
 
 static void ptr_axis(void *data, struct wl_pointer *p, uint32_t time,
@@ -252,7 +253,8 @@ static void ptr_frame(void *data, struct wl_pointer *p) {
 
   if (f->have_button && f->button == BTN_LEFT) {
     nd_app_pointer_button(in->app, in->px, in->py,
-                          f->btn_state == WL_POINTER_BUTTON_STATE_PRESSED);
+                          f->btn_state == WL_POINTER_BUTTON_STATE_PRESSED,
+                          f->time);
   }
 
   memset(f, 0, sizeof *f);
