@@ -1,12 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <!-- nemdown's icon.
-       A page with its corner turned, carrying the two marks that say
-       "markdown" without spelling it: a heading rule and the down-chevron of
-       the markdown mark. Catppuccin Mocha, teal accent, matching the app.
+  <!-- nemdown's icon: a page carrying the two halves of the name.
 
-       Drawn on a 64 grid with nothing thinner than 2 units, so it survives
-       being scaled to a 16px tray slot. The usual failure of an app icon is
-       detail that turns to mush at the size a launcher actually uses. -->
+       The letter is nemesis's own lowercase "n", lifted cell for cell from
+       that project's wordmark rather than redrawn, so the chamfered top-left
+       and the stepped foot of the right stem are exactly the ones in the
+       logo. Those steps are the family resemblance; an approximation would
+       lose the only part that carries it. Below it, the down-chevron: nem,
+       and down.
+
+       The wordmark itself could not be used. It is seven letters on a 75-cell
+       grid and turns to mush by 48px, which is where a launcher starts.
+
+       The glyph is emitted as merged rectangles, not one per grid row. Row
+       strips share edges, and every shared edge is antialiased twice, which
+       banded the whole letter with hairlines at small sizes.
+
+       Nothing is thinner than 2 units on the 64 grid, so it survives the
+       16px case. Catppuccin Mocha throughout, teal accent, matching the app. -->
   <defs>
     <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#45475a"/>
@@ -18,21 +28,21 @@
   <path d="M12 6h26l14 14v38a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4V10a4 4 0 0 1 4-4z"
         fill="url(#page)" stroke="#585b70" stroke-width="2"
         stroke-linejoin="round"/>
-  <!-- the fold itself, lit so the corner reads as turned rather than cut -->
+  <!-- the fold, lit so the corner reads as turned rather than cut -->
   <path d="M38 6l14 14H42a4 4 0 0 1-4-4z" fill="#6c7086"/>
 
-  <!-- heading rule: the one line that says "this is a document" -->
-  <rect x="17" y="28" width="22" height="4" rx="2" fill="#94e2d5"/>
+  <!-- nemesis's "n" -->
+  <g fill="#94e2d5">
+    <rect x="27" y="14" width="12.25" height="3.5"/>
+    <rect x="25.25" y="15.75" width="1.75" height="26.25"/>
+    <rect x="23.5" y="17.5" width="1.75" height="24.5"/>
+    <rect x="27" y="17.5" width="1.75" height="24.5"/>
+    <rect x="34" y="17.5" width="5.25" height="21"/>
+    <rect x="34" y="38.5" width="3.5" height="1.75"/>
+    <rect x="34" y="40.25" width="1.75" height="1.75"/>
+  </g>
 
-  <!-- body lines, dimmer, unequal lengths so they read as prose. They stop
-       short of the chevron: overlapping them turned the whole lower half into
-       one smudge below about 32px. -->
-  <rect x="17" y="38" width="17" height="3" rx="1.5" fill="#7f849c"/>
-  <rect x="17" y="45" width="11" height="3" rx="1.5" fill="#7f849c"/>
-
-  <!-- the markdown down-chevron. Large and clear of everything else, because
-       at launcher sizes this and the teal rule are the only two things that
-       still survive. -->
-  <path d="M38 37l7 9 7-9" fill="none" stroke="#94e2d5" stroke-width="5"
+  <!-- and down -->
+  <path d="M25 49l7 6 7-6" fill="none" stroke="#94e2d5" stroke-width="4.5"
         stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
