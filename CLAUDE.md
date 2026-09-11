@@ -44,6 +44,22 @@ tools/            lsan.supp, valgrind.supp
 - Inspect parser behaviour before trusting it: `build/dump_md4c` and `build/dump_tree`.
 - Protocol debugging: `WAYLAND_DEBUG=1 ./build/debug/nemdown file.md`.
 
+## Math
+
+`$x^2$` and `$$...$$` are typeset, not styled source. There is no browser
+engine and no LaTeX process: fonts with an **OpenType MATH table** carry the
+constants TeX keeps in its font metrics, HarfBuzz exposes them through
+`hb_ot_math_*`, and HarfBuzz is already linked via pangocairo. The pipeline
+follows TeX's own — `math_parse.c` (source to atoms), `math_box.c` (atoms to
+positioned boxes, TeXbook Appendix G), `math_paint.c` (boxes to glyphs), with
+`math_syms.c` as the name-to-codepoint table.
+
+Needs a math font: STIX Two Math (`otf-stix`, AUR) is preferred, Latin Modern
+Math (`otf-latinmodern-math`, extra) and several others are accepted, and with
+none installed math falls back to the styled-source panel it used to be. **Never
+hard-code a measurement here** — read it from the face. STIX reports 70%/55%
+script scaling where Noto reports 60%/50%.
+
 ## Architecture
 
 The shell (`src/wl`, `src/ui`) and the engine (`src/doc`) meet only at
@@ -172,6 +188,21 @@ These were each a real bug; the comments in the code say so at the site.
   per-item lookup is quadratic. This was 79 seconds a frame.
 - **Copying yields rendered text, not markdown source.** md4c's text callback
   carries no source offset, so the mapping does not exist.
+- **Atom classes are spacing, not bookkeeping.** The gap between two math
+  atoms is a function of their classes, so `a+b` and `a=b` differ. TeXbook
+  rule 5 — a Bin that cannot be binary becomes an Ord — is what sets the `-`
+  in `-b` tight instead of as a subtraction.
+- **Centring a delimiter on the maths axis is `(h-d)/2` MINUS the axis.**
+  Adding it drops the delimiter by twice the axis height, which reads as
+  parentheses sagging below the fraction they enclose.
+- **Pango draws a shape attribute once per CHARACTER it covers.** An inline
+  formula therefore hangs on the first character only, with the rest of its
+  source under zero-width shapes — which keeps the LaTeX in the layout so
+  search and copy still see text a person can type.
+- **`$$...$$` is a SPAN extension, but block structure is decided first.** A
+  lone `=` line inside a display formula is a setext heading underline and
+  turns it into an H1. `preprocess.c` folds the newlines to spaces, which is
+  length-preserving and so costs no edit record.
 - **`xkb_state_key_get_utf8` is snprintf-shaped.** It returns the bytes
   *required*, not the bytes written, so a key level carrying several keysyms
   reports more than it wrote. Bound the return against the local buffer, not
