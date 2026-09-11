@@ -79,19 +79,33 @@ void nd_reading_free(struct nd_reading *r) {
   r->n = r->cap = 0;
 }
 
+/* How much of a stop has to remain on screen for it to still be the one being
+ * read. About a line: below that there is nothing left to read, and keeping
+ * the marker there points at text that has already gone. */
+#define ND_READ_MIN_VISIBLE 24.0
+
 int nd_reading_at(const struct nd_reading *r, double doc_y) {
   if (r->n == 0) return -1;
 
-  /* The stop being read is the first one still on screen: as its last line
-   * scrolls off the top, the next one takes over. A small tolerance keeps a
-   * stop from being handed on while a sliver of it is still visible. */
-  double probe = doc_y + 4.0;
-
+  /* Find the first stop not entirely above the fold... */
   uint32_t lo = 0, hi = r->n;
   while (lo < hi) {
     uint32_t m = (lo + hi) / 2;
-    if (r->stops[m].y + r->stops[m].h <= probe) lo = m + 1;
+    if (r->stops[m].y + r->stops[m].h <= doc_y) lo = m + 1;
     else hi = m;
   }
+
+  /* ...then hand on while only a sliver of it is left. Without this a
+   * paragraph stays current until its last pixel leaves, so the marker ends up
+   * beside text that is no longer on screen -- which is worse than useless,
+   * because it points confidently at nothing. Each step strictly increases the
+   * bottom edge, so this advances at most a couple of times. */
+  while (lo < r->n) {
+    double h = r->stops[lo].h;
+    double want = h < ND_READ_MIN_VISIBLE ? h : ND_READ_MIN_VISIBLE;
+    if (r->stops[lo].y + h - doc_y >= want) break;
+    lo++;
+  }
+
   return (int)(lo < r->n ? lo : r->n - 1);
 }

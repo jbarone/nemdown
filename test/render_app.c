@@ -17,12 +17,13 @@
 
 int main(int argc, char **argv) {
   if (argc < 3) {
-    fprintf(stderr, "usage: render_app <file.md> <out.png> [w] [h] [scale]\n");
+    fprintf(stderr, "usage: render_app <file.md> <out.png> [w] [h] [scale] [scroll]\n");
     return 2;
   }
   int    w     = argc > 3 ? atoi(argv[3]) : 1100;
   int    h     = argc > 4 ? atoi(argv[4]) : 900;
-  double scale = argc > 5 ? atof(argv[5]) : 1.0;
+  double scale  = argc > 5 ? atof(argv[5]) : 1.0;
+  double scroll = argc > 6 ? atof(argv[6]) : 0.0;
 
   char *err = NULL;
   nd_doc *doc = nd_doc_open(argv[1], &err);
@@ -67,17 +68,22 @@ int main(int argc, char **argv) {
   cairo_translate(cr, sidebar_w, 0);
   /* The reading marker, drawn the way app.c draws it, so what this harness
    * shows is what the window shows. */
-  int stop = nd_doc_reading_at(doc, 0);
+  int stop = nd_doc_reading_at(doc, scroll);
   double sx, sy, sw, sh;
   if (stop >= 0 && nd_doc_reading_rect(doc, (uint32_t)stop, &sx, &sy, &sw, &sh)) {
     double gx = nd_doc_column_x(doc) - 22.0;
     if (gx < 2.0) gx = 2.0;
-    cairo_set_source_rgba(cr, ND_R(ND_ACCENT), ND_G(ND_ACCENT), ND_B(ND_ACCENT), 0.80);
-    cairo_rectangle(cr, gx, sy, 2.0, sh);
-    cairo_fill(cr);
+    double top = sy - scroll, bot = top + sh;
+    if (top < 6.0) top = 6.0;
+    if (bot > h - 6.0) bot = h - 6.0;
+    if (bot - top >= 1.0) {
+      cairo_set_source_rgba(cr, ND_R(ND_ACCENT), ND_G(ND_ACCENT), ND_B(ND_ACCENT), 0.80);
+      cairo_rectangle(cr, gx, top, 2.0, bot - top);
+      cairo_fill(cr);
+    }
   }
 
-  nd_doc_paint(doc, cr, 0, h);
+  nd_doc_paint(doc, cr, scroll, h);
   cairo_restore(cr);
 
   cairo_destroy(cr);

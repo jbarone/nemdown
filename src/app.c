@@ -51,6 +51,7 @@
 #define ND_GUIDE_GAP    22.0   /* left of the column */
 #define ND_GUIDE_ALPHA  0.80
 #define ND_GUIDE_TAU    0.050  /* it should arrive before you look for it */
+#define ND_GUIDE_INSET  6.0    /* never flush against the window edge */
 
 /* Scrollbars stay solid this long after the last scroll, then fade. */
 #define ND_SB_HOLD_MS   800
@@ -1103,13 +1104,21 @@ void nd_app_paint(struct nd_app *app, cairo_t *cr, int w, int h, double scale) {
   cairo_translate(cr, sidebar, 0);
   /* Behind the text and in the margin, so it never sits on a glyph. */
   if (app->guide_on && app->guide_idx >= 0 && app->guide_h > 0.0) {
-    double gy = app->guide_y - app->scroll.offset;
-    if (gy < content_h && gy + app->guide_h > 0) {
+    /* Clipped to the viewport, not just culled against it. A stop taller than
+     * the window -- a long fence, a big table -- would otherwise run off both
+     * edges, and a stop partly scrolled past would show a stub at the very top
+     * with its text already gone. Either way the mark has to stay somewhere it
+     * can be seen. */
+    double top = app->guide_y - app->scroll.offset;
+    double bot = top + app->guide_h;
+    if (top < ND_GUIDE_INSET) top = ND_GUIDE_INSET;
+    if (bot > content_h - ND_GUIDE_INSET) bot = content_h - ND_GUIDE_INSET;
+
+    if (bot - top >= 1.0) {
       double gx = nd_doc_column_x(app->doc) - ND_GUIDE_GAP;
       if (gx < 2.0) gx = 2.0;   /* a narrow window has no margin to spare */
       nd_src_a(cr, ND_ACCENT, ND_GUIDE_ALPHA);
-      cairo_rectangle(cr, nd_snap(gx, scale), gy,
-                      ND_GUIDE_W, app->guide_h);
+      cairo_rectangle(cr, nd_snap(gx, scale), top, ND_GUIDE_W, bot - top);
       cairo_fill(cr);
     }
   }
