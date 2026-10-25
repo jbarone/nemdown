@@ -26,6 +26,17 @@
  * line into an HTML-like label without passing through nd_mm_clean_label, so a
  * control byte in a member reached the dot. That is why the filter now lives in
  * the two escapers rather than in the cleaner.
+ *
+ * pele adds a second boundary of the same shape. pele writes the SVG, and its
+ * escaping is upstream's to get right, but nd_mm_pele_theme then REWRITES that
+ * SVG's attribute values to resolve the CSS variables librsvg cannot. The
+ * invariant there is that the rewrite touches nothing but attribute values:
+ * with every quoted value blanked out, the markup before and after must be
+ * byte-identical. It is asserted twice -- over random SVG-shaped strings built
+ * to provoke the resolver, and over everything pele draws from the mutated
+ * corpus, where in addition no var() may survive and librsvg must accept the
+ * result. Breaking the tag tracking, letting a value carry `<` into the table,
+ * and dropping the recursion bound were each checked to fail here.
  */
 
 #include <stdbool.h>
@@ -96,6 +107,39 @@ static const char *kCorpus[] = {
   "  state ch <<choice>>\n"
   "  Busy --> ch\n"
   "  ch --> [*]\n",
+
+  /* Dialects only pele draws. The translators reject them, which is itself
+   * worth sweeping; the pele pass below is what they are here for. */
+  "gantt\n"
+  "  title Plan\n"
+  "  dateFormat YYYY-MM-DD\n"
+  "  section A\n"
+  "  One :a1, 2026-01-01, 3d\n"
+  "  Two :after a1, 2d\n",
+
+  "pie title Share\n"
+  "  \"Left\" : 40\n"
+  "  \"Right\" : 60\n",
+
+  "erDiagram\n"
+  "  CUSTOMER ||--o{ ORDER : places\n"
+  "  ORDER {\n"
+  "    string id PK\n"
+  "    int total\n"
+  "  }\n",
+
+  "mindmap\n"
+  "  root((Centre))\n"
+  "    Left\n"
+  "      Deeper\n"
+  "    Right[Square]\n",
+
+  "gitGraph\n"
+  "  commit\n"
+  "  branch dev\n"
+  "  commit id: \"x\"\n"
+  "  checkout main\n"
+  "  merge dev\n",
 
   "classDiagram\n"
   "  note for Thing \"a note\"\n"
@@ -200,6 +244,157 @@ static bool dot_balanced(const char *dot, const char **why) {
 
 static long checked, drew;
 
+/* ---- pele's theming pass ----------------------------------------------- */
+
+/* The markup with every quoted attribute value emptied: what nd_mm_pele_theme
+ * must leave exactly as it found it. Written from the XML reading, not copied
+ * from the code under test. */
+static char *skeleton(const char *s) {
+  size_t n = strlen(s);
+  char *out = malloc(n + 1), *o = out;
+  bool tag = false, val = false;
+  for (const char *p = s; *p; p++) {
+    if (val) { if (*p == '"') { val = false; *o++ = '"'; } continue; }
+    if (tag && *p == '"') { val = true; *o++ = '"'; continue; }
+    if (*p == '<') tag = true;
+    else if (*p == '>') tag = false;
+    *o++ = *p;
+  }
+  *o = 0;
+  return out;
+}
+
+/* True if any attribute value still holds a var(). */
+static bool var_left(const char *s) {
+  bool tag = false, val = false;
+  for (const char *p = s; *p; p++) {
+    if (val) {
+      if (*p == '"') val = false;
+      else if (!strncmp(p, "var(", 4)) return true;
+      continue;
+    }
+    if (tag && *p == '"') val = true;
+    else if (*p == '<') tag = true;
+    else if (*p == '>') tag = false;
+  }
+  return false;
+}
+
+static bool theme_preserves(const char *in, const char *out, const char **why) {
+  char *a = skeleton(in), *b = skeleton(out);
+  bool same = strcmp(a, b) == 0;
+  free(a);
+  free(b);
+  if (!same) { *why = "markup outside attribute values changed"; return false; }
+  /* The skeleton blanks values, so it cannot see markup carried INTO one. A
+   * raw `<` in a value is malformed XML and a `"` would end it, so the pass
+   * may never add the first and never change the count of the second. It may
+   * REMOVE a `<`: a resolved var() drops its fallback, and in malformed input
+   * the fallback can hold one. */
+  size_t lt_in = 0, lt_out = 0, q_in = 0, q_out = 0;
+  for (const char *p = in; *p; p++) { lt_in += *p == '<'; q_in += *p == '"'; }
+  for (const char *p = out; *p; p++) { lt_out += *p == '<'; q_out += *p == '"'; }
+  if (lt_out > lt_in) { *why = "the pass added a < to a value"; return false; }
+  if (q_out != q_in) { *why = "the pass changed the quoting"; return false; }
+  /* Fan-out through nested variables is the only way out grows. The depth
+   * bound keeps it polynomial; this keeps it honest. */
+  if (strlen(out) > 64 * strlen(in) + 4096) { *why = "output blew up"; return false; }
+  return true;
+}
+
+/* Tokens that steer the resolver into its corners: definitions that refer to
+ * themselves and to each other, unterminated var(, nested parentheses, quotes
+ * and angle brackets where a value should be. */
+static const char *kSvgTok[] = {
+  "<", ">", "\"", " ", "x", "=", ";", ":", ",", "(", ")", "#fff",
+  "var(", "var(--", "var(--a)", "var(--b,", "var(--_c)", "var(--pele-bg)",
+  "var(--pele-fg,#000)", "--a:", "--b:", "--_c:", " style=\"", "<g fill=\"",
+  "<text>", "</text>", "/>",
+};
+#define NSVGTOK ((int)(sizeof kSvgTok / sizeof *kSvgTok))
+
+static const char *kSvgRoot[] = {
+  "<svg style=\"--a:var(--b);--b:var(--a);--_c:var(--pele-bg,#fff)\">",
+  "<svg style=\"--a:var(--a) var(--a) var(--a);--b:<x>\">",
+  "<svg style=\"--a:<g;--b:var(--a)\">",
+  "<svg style=\"--a:var(--b,var(--b,var(--b,var(--b,var(--b)))))\">",
+  "<svg>",
+  "",
+};
+#define NSVGROOT ((int)(sizeof kSvgRoot / sizeof *kSvgRoot))
+
+static bool sweep_theme(long rounds) {
+  char buf[MAXBUF];
+  for (long i = 0; i < rounds; i++) {
+    uint64_t seed = rng_state;
+    size_t n = (size_t)snprintf(buf, sizeof buf, "%s",
+                                kSvgRoot[rnd() % NSVGROOT]);
+    int toks = (int)(rnd() % 80);
+    for (int t = 0; t < toks; t++) {
+      const char *k = kSvgTok[rnd() % NSVGTOK];
+      size_t kl = strlen(k);
+      if (n + kl + 1 >= sizeof buf) break;
+      memcpy(buf + n, k, kl);
+      n += kl;
+    }
+    buf[n] = 0;
+
+    char *out = nd_mm_pele_theme(buf, n);
+    const char *why = NULL;
+    if (!out || !theme_preserves(buf, out, &why)) {
+      printf("FAIL: nd_mm_pele_theme: %s\n", out ? why : "returned NULL");
+      printf("  seed 0x%016llx\n", (unsigned long long)seed);
+      printf("  --- input ---\n%s\n  --- output ---\n%s\n", buf,
+             out ? out : "(null)");
+      free(out);
+      return false;
+    }
+    free(out);
+  }
+  return true;
+}
+
+static long pele_drew;
+
+/* Everything pele draws from the mutated corpus goes through the theming pass
+ * and then librsvg, which is the path the viewer takes. */
+static bool sweep_pele(PangoContext *pctx, long rounds) {
+  char buf[MAXBUF];
+  for (long i = 0; i < rounds; i++) {
+    uint64_t seed = rng_state;
+    int which = (int)(rnd() % NCORPUS);
+    uint32_t len = mutate(kCorpus[which], buf);
+
+    double w, h;
+    char *svg = nd_mm_pele_svg(pctx, buf, len, 700.0, &w, &h);
+    if (!svg) continue;
+    pele_drew++;
+
+    char *out = nd_mm_pele_theme(svg, strlen(svg));
+    const char *why = NULL;
+    bool ok = out && theme_preserves(svg, out, &why);
+    if (ok && var_left(out)) { why = "a var() survived"; ok = false; }
+    if (ok) {
+      GError *err = NULL;
+      RsvgHandle *rh = rsvg_handle_new_from_data((const guint8 *)out,
+                                                 strlen(out), &err);
+      if (rh) g_object_unref(rh);
+      else { why = "librsvg rejected it"; ok = false; g_clear_error(&err); }
+    }
+    if (!ok) {
+      printf("FAIL: pele output after theming: %s\n", out ? why : "NULL");
+      printf("  seed 0x%016llx\n", (unsigned long long)seed);
+      printf("  --- input ---\n%.*s\n", (int)len, buf);
+      free(out);
+      free(svg);
+      return false;
+    }
+    free(out);
+    free(svg);
+  }
+  return true;
+}
+
 static bool sweep_translators(long rounds) {
   char buf[MAXBUF];
 
@@ -298,7 +493,16 @@ int main(int argc, char **argv) {
   PangoContext *pctx = pango_font_map_create_context(fm);
   pango_cairo_context_set_resolution(pctx, 96.0);
 
+  long th = tr * 2;
+  if (!sweep_theme(th)) return 1;
+  if (!sweep_pele(pctx, bl)) return 1;
+
+  /* The full build twice: through pele, which is what the viewer does, and
+   * with pele skipped, so the native renderers behind it stay covered. */
   if (!sweep_builds(pctx, bl)) return 1;
+  setenv("NEMDOWN_NO_PELE", "1", 1);
+  if (!sweep_builds(pctx, bl)) return 1;
+  unsetenv("NEMDOWN_NO_PELE");
   g_object_unref(pctx);
 
   printf("ok: %ld mutated inputs through the translators, %ld produced dot "
@@ -306,5 +510,8 @@ int main(int argc, char **argv) {
          checked, drew, bl,
          nd_mermaid_have_graphviz() ? "" : " (graphviz absent: graph dialects"
                                            " fell back, as designed)");
+  printf("ok: %ld synthetic SVGs through the theming pass, %ld of %ld pele "
+         "renders themed with the markup intact; full build with and "
+         "without pele\n", th, pele_drew, bl);
   return 0;
 }
