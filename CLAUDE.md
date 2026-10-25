@@ -24,8 +24,7 @@ src/wl/           the Wayland shell: connection, window, buffers, input
 src/ui/           theme, typography, sidebar — the chrome around the document
 src/ui/filechooser.c  the desktop's Open dialog, via xdg-desktop-portal
 src/doc/          the document engine; doc.h is the ONLY header the shell uses
-src/doc/mermaid_pele.c  mermaid diagrams, every dialect, via pele in QuickJS
-src/doc/mermaid*.c    the native fallback: graphviz for graphs, by hand for sequences
+src/doc/mermaid*.c    mermaid diagrams, every dialect, via pele in QuickJS
 test/             headless harnesses, assertion checks, fixtures; no compositor
 tools/            lsan.supp, valgrind.supp, update-pele.sh
 vendor/pele/      pele's bundle and licence, vendored by tools/update-pele.sh
@@ -83,27 +82,19 @@ is untrusted input to a JS engine, so the context gets no std or os module, a
 render that hits any of them throws, the exception is consumed, and the context
 stays usable for the next fence.
 
-Anything pele refuses falls back to the native renderers, which predate it and
-still draw four dialects. Their split is not arbitrary. `flowchart`,
-`stateDiagram-v2` and `classDiagram` are GRAPHS, so something has to solve a
-layout, and that is graphviz: `mermaid_dot.c` translates to themed dot and
-`mermaid_gv.c` lays it out. `sequenceDiagram` is not a graph, so
-`mermaid_seq.c` measures and draws it directly. graphviz is **dlopened, not
-linked** — 11MB for a fallback is not worth a hard dependency. quickjs-ng is
-linked because it is 1.4MB with nothing beyond glibc, and because `JSValue`
-crosses its API by value: the header's struct layout is ABI either way.
+Anything pele refuses shows the fence's source. nemdown once drew four dialects
+itself, through graphviz and a hand-written sequence renderer; pele replaced
+them, and they were removed. quickjs-ng is linked, not dlopened as graphviz
+was: it is 1.4MB with nothing beyond glibc, and `JSValue` crosses its API by
+value, so the header's struct layout is ABI either way.
 
-`NEMDOWN_NO_PELE=1` skips pele, for comparing the two.
-
-Both renderers turn untrusted text into markup something else parses, so both
-are swept by `test/check_mermaid.c`. For the native path: every label leaves
-through `nd_mm_dot_str` or `nd_mm_html_esc`, and the dot that comes out of
-mutated fences still has balanced quotes and braces. For pele: the theming pass
-may rewrite attribute values and nothing else — with every value blanked, the
-markup before and after is identical, no `<` is added and the `"` count does
-not change — over random SVG-shaped strings and over everything pele draws.
-**If you change either, run `make test` and then break it on purpose.** Its
-first pele run found an unbounded name match that deleted text from values.
+pele turns untrusted text into SVG that librsvg parses, and `nd_mm_pele_theme`
+rewrites that SVG, so `test/check_mermaid.c` sweeps the rewrite: it may change
+attribute values and nothing else — with every value blanked, the markup
+before and after is identical, no `<` is added and the `"` count does not
+change — over random SVG-shaped strings and over everything pele draws. **If
+you change it, run `make test` and then break it on purpose.** Its first runs
+found an unbounded name match that deleted text from values.
 
 ## Architecture
 
@@ -268,25 +259,6 @@ These were each a real bug; the comments in the code say so at the site.
   `var(--x)` is left alone.
 - **`JS_Eval` requires a NUL one past the length**, which is why
   `pele_bundle.c` appends a byte the length excludes.
-- **Mermaid output is `svg:cairo`, not `svg`.** Plain SVG writes text as
-  text and lets the renderer shape it — and librsvg does not shape it the way
-  graphviz measured it. graphviz measures through Pango WITH hinting at 96dpi,
-  where Hack's 10.66px advance hints down to 10, then writes points; librsvg
-  draws the same string unhinted at 13px and gets 4% more. Invisible on a node
-  with a wide margin, obvious in a class-diagram cell, where the last member
-  ran out through the right border. `svg:cairo` emits positioned glyph
-  outlines, so measurement and drawing cannot disagree. The plain SVG is still
-  rendered, but only for its viewBox: it states the size in POINTS, which is
-  the coordinate system the dot's font sizes were written in.
-- **A mermaid registry entry is a pointer that must not move.** The flowchart
-  parser holds both ends of an edge while it parses the next node, so an array
-  of structs that reallocs is a use-after-free — which is what it was, found by
-  ASan. The registry stores individually allocated nodes for that reason.
-- **graphviz leaks the virtual edges it builds for CLUSTER layout**, so a
-  flowchart with a `subgraph` loses about a kilobyte per relayout. Not ours and
-  nothing to free from here; suppressed narrowly by function name in both
-  `tools/lsan.supp` and `tools/valgrind.supp` so other graphviz leaks still
-  report.
 - **`cairo_surface_set_device_scale` must come before the first draw.** Cairo
   does not return an error for a late one, it asserts and aborts.
 - **Zoom scales a diagram, the display scale rasterises it.** They are separate

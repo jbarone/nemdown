@@ -19,19 +19,15 @@ license=('MIT')
 # not depend on is a namcap error, and rightly so: install it alone and the
 # icon lands in a tree nothing else created.
 # quickjs-ng runs pele, the mermaid renderer, which is linked into the binary.
-# A hard dependency rather than an optdepends like graphviz: 1.4MB with nothing
-# beyond glibc, and it is what draws every diagram type.
+# A hard dependency rather than an optdepends: 1.4MB with nothing beyond glibc,
+# and it is what draws every diagram.
 depends=('glibc' 'wayland' 'libxkbcommon' 'cairo' 'pango' 'md4c' 'libyaml'
          'gdk-pixbuf2' 'librsvg' 'glib2' 'harfbuzz' 'hicolor-icon-theme'
          'quickjs-ng')
 makedepends=('git' 'clang' 'wayland-protocols' 'pkgconf')
-# Only for check(): check_mermaid also sweeps the native renderers behind pele,
-# and without graphviz their graph cases would be skipped rather than tested.
-checkdepends=('graphviz')
 optdepends=('wl-clipboard: copying selected text and code fences'
             'otf-stix: typeset maths (any font with an OpenType MATH table works)'
             'otf-latinmodern-math: typeset maths, Computer Modern instead of STIX'
-            'graphviz: fallback for mermaid flowchart, state and class diagrams pele refuses'
             'ttf-hack-nerd: the font the typography is designed around')
 provides=('nemdown')
 conflicts=('nemdown')

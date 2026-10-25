@@ -1,17 +1,9 @@
 /* mermaid.h — mermaid diagrams, rendered rather than shown as source.
  *
  * Every dialect is drawn by pele, Obsidian's mermaid renderer, run in QuickJS
- * (mermaid_pele.c). Behind it sit the native renderers, which predate it and
- * draw four dialects: `flowchart`, `stateDiagram-v2` and `classDiagram` are
- * graphs, laid out by graphviz, and `sequenceDiagram` is a table of columns
- * and rows that Pango measures directly. A fence pele refuses goes to them,
- * and one that both refuse falls back to the ordinary syntax-highlighted code
- * panel, which is the honest answer: the reader sees exactly what the file
- * says.
- *
- * graphviz is loaded with dlopen at RUN time, not linked at build time:
- * installed, the fallback can draw graphs; absent, they degrade to source and
- * nothing else changes. quickjs-ng is linked; see mermaid_pele.c for why.
+ * (mermaid_pele.c). A fence pele refuses falls back to the ordinary
+ * syntax-highlighted code panel, which is the honest answer: the reader sees
+ * exactly what the file says.
  */
 
 #ifndef NEMDOWN_MERMAID_H
@@ -32,10 +24,9 @@ bool nd_mermaid_is_fence(const char *lang);
  * because the text is small means the figures too, and a diagram that alone
  * refused to grow would read as a bug.
  *
- * Returns NULL when neither pele nor the native renderers can draw it: the
- * dialect is unknown, the source does not parse, the diagram is beyond the
- * size caps, or graphviz is needed and absent. In every one of those cases the
- * caller shows the source instead. */
+ * Returns NULL when pele cannot draw it: the dialect is unknown, the source
+ * does not parse, or the diagram is beyond the size caps or the time budget.
+ * In every one of those cases the caller shows the source instead. */
 struct nd_mermaid *nd_mermaid_build(PangoContext *pctx, const char *src,
                                     uint32_t len, double max_w, double zoom);
 
@@ -45,9 +36,5 @@ void nd_mermaid_size(const struct nd_mermaid *m, double *w, double *h);
 void nd_mermaid_paint(struct nd_mermaid *m, cairo_t *cr, double x, double y);
 
 void nd_mermaid_free(struct nd_mermaid *m);
-
-/* Whether the graph dialects can render at all on this machine. Used only to
- * word the one-line hint on a fence that would have drawn. */
-bool nd_mermaid_have_graphviz(void);
 
 #endif /* NEMDOWN_MERMAID_H */

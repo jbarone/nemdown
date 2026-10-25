@@ -175,13 +175,12 @@ build/check_pathguard: test/check_pathguard.c src/doc/pathguard.c
 	@mkdir -p build
 	$(CC) $(STD) $(WARN) -O2 -g -Isrc $(PKG_CFLAGS) -o $@ $^ $(PKG_LIBS)
 
-# The mermaid translators write dot that graphviz then parses, so a label that
-# escaped its quoting would change the graph rather than just look wrong. This
-# sweeps mutated fences through all four dialects and checks the dot is still
-# balanced. Same reasoning as the two above, same instruction: break it on
-# purpose after changing a parser.
-build/check_mermaid: test/check_mermaid.c src/doc/mermaid.c src/doc/mermaid_dot.c \
-                     src/doc/mermaid_gv.c src/doc/mermaid_seq.c \
+# pele writes SVG and nd_mm_pele_theme rewrites its attribute values to resolve
+# the CSS variables librsvg cannot, so a document could steer that rewrite.
+# This sweeps it, and everything pele draws from mutated fences, and checks
+# the markup survives. Same reasoning as the two above, same instruction:
+# break it on purpose after changing the theming pass.
+build/check_mermaid: test/check_mermaid.c src/doc/mermaid.c \
                      src/doc/mermaid_pele.c src/doc/pele_bundle.c src/util/log.c \
                      $(PELE_JS)
 	@mkdir -p build

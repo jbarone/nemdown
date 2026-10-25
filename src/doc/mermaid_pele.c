@@ -9,10 +9,9 @@
  * It runs as JavaScript rather than as a port because it moves too fast to
  * port: nineteen releases in its first three weeks. The bundle is linked in
  * by pele_bundle.c, so following upstream is replacing one vendored file.
- * quickjs-ng is linked, not dlopened as graphviz is: it is 1.4MB with no
- * dependency beyond glibc, and JSValue crosses the API by value, so the
- * header's struct layout is part of the ABI either way and dlopen would buy
- * nothing.
+ * quickjs-ng is linked, not dlopened: it is 1.4MB with no dependency beyond
+ * glibc, and JSValue crosses the API by value, so the header's struct layout
+ * is part of the ABI either way and dlopen would buy nothing.
  *
  * Three things pele cannot know and this file supplies:
  *

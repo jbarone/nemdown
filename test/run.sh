@@ -13,7 +13,7 @@ fail=0
 
 # These assert rather than report, so they run first: a regression in the first
 # two is a hang or a path escape, and in the third it is a document steering
-# what gets handed to graphviz. None of them is a rendering nit.
+# the markup librsvg is handed. None of them is a rendering nit.
 for check in check_utf8 check_pathguard check_mermaid; do
   if ! ./build/"$check"; then
     fail=1

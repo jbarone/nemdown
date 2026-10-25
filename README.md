@@ -42,12 +42,11 @@ Either gives a real package: `pacman -Qi nemdown-git` knows it, `-Rns` removes
 it cleanly, and rebuilding picks up new commits. It pulls its own build and
 runtime dependencies, so there is no list to install by hand.
 
-Three things are optional and none is installed for you, because each only
-matters to documents that use it and each degrades to showing its source rather
-than failing. Maths needs a font carrying an OpenType MATH table — `otf-stix`
-preferred, `otf-latinmodern-math` also works. `graphviz` is a fallback for the
-few mermaid graphs pele refuses. `wl-clipboard` enables copying. All three are
-`optdepends`.
+Two things are optional and neither is installed for you, because each only
+matters to documents that use it. Maths needs a font carrying an OpenType MATH
+table — `otf-stix` preferred, `otf-latinmodern-math` also works — and without
+one a formula shows its source rather than failing. `wl-clipboard` enables
+copying. Both are `optdepends`.
 
 It registers a launcher entry and an icon, and claims `text/markdown`, so it
 can be opened from a menu or by clicking a `.md` file. Launched with no file it
@@ -158,9 +157,7 @@ clean-chroot build checks; if the two ever disagree, the PKGBUILD is right.
 
 At runtime: `wl-clipboard` for copying, Hack Nerd Font and Hack Nerd Font Mono
 for the typography, a maths font — `otf-stix` (AUR) preferred,
-`otf-latinmodern-math` also works — and, optionally, `graphviz` as the
-fallback for mermaid graphs pele refuses. graphviz is opened with `dlopen`
-rather than linked, so there is one binary either way.
+`otf-latinmodern-math` also works.
 
 ## Rendering
 
@@ -211,9 +208,7 @@ rather than porting it: pele moves faster than a C port of it could follow.
 A fence is untrusted input, and the interpreter is given nothing to reach with:
 no file, network or process access, a capped heap, and a time budget after
 which a render is interrupted. Anything pele refuses — a syntax error, a graph
-past the edge limit, a render that overran — falls back to nemdown's own
-renderers for the four dialects it has always drawn, and failing those, to the
-fence's source.
+past the edge limit, a render that overran — shows the fence's source.
 
 Not yet: footnotes, a vault browser, WebP.
 
@@ -228,13 +223,13 @@ build/render_png <file.md> out.png [w] [scale]
 build/render_app <file.md> out.png [w] [h] [scale] [scroll]  # incl. sidebar
 build/check_utf8                      # 26.8M-input sweep of the UTF-8 scrub
 build/check_pathguard                 # path containment against a symlink tree
-build/check_mermaid [rounds] [builds] # mutation sweep over the mermaid parsers
+build/check_mermaid [rounds] [builds] # mutated fences through pele and theming
 ```
 
 These three assert rather than report, and `make test` runs them first: a
 regression in the first two is a hang or a path escape, and in the third it is
-a document steering what gets handed to graphviz, or the theming pass changing
-the markup of what pele drew.
+a document steering the theming pass into changing the markup of what pele
+drew.
 
 `render_png` at several scales is the cheapest regression test there is: layout
 is scale-invariant by design, so the content height must not move.

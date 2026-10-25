@@ -98,10 +98,9 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
       cairo_set_line_width(cr, 1.0);
       cairo_stroke(cr);
 
-      /* A mermaid fence only reaches here having failed to draw. pele draws
-       * every dialect and graphviz is only its fallback, so the commonest
-       * reason is now that the source does not parse -- which the reader can
-       * see -- and naming graphviz here would send them after the wrong fix. */
+      /* A mermaid fence only reaches here having failed to draw, and pele
+       * draws every dialect, so the reason is nearly always that the source
+       * does not parse -- which the reader can see for themselves. */
       const char *lang = b->code_lang;
       if (b->kind == ND_MERMAID) lang = "mermaid";
 
