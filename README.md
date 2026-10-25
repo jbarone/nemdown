@@ -45,9 +45,9 @@ runtime dependencies, so there is no list to install by hand.
 Three things are optional and none is installed for you, because each only
 matters to documents that use it and each degrades to showing its source rather
 than failing. Maths needs a font carrying an OpenType MATH table — `otf-stix`
-preferred, `otf-latinmodern-math` also works. Mermaid flowcharts, state
-diagrams and class diagrams need `graphviz` (sequence diagrams do not, and
-always draw). `wl-clipboard` enables copying. All three are `optdepends`.
+preferred, `otf-latinmodern-math` also works. `graphviz` is a fallback for the
+few mermaid graphs pele refuses. `wl-clipboard` enables copying. All three are
+`optdepends`.
 
 It registers a launcher entry and an icon, and claims `text/markdown`, so it
 can be opened from a menu or by clicking a `.md` file. Launched with no file it
@@ -149,18 +149,18 @@ sudo make install
 ```
 
 Build: `clang` `pkgconf` `wayland-protocols`. Link: `wayland` `libxkbcommon`
-`cairo` `pango` `md4c` `libyaml` `gdk-pixbuf2` `librsvg` `glib2` `harfbuzz` —
-glib for its UTF-8 helpers and harfbuzz for the OpenType MATH table, both
-linked directly rather than only through pango. All from the official repos.
+`cairo` `pango` `md4c` `libyaml` `gdk-pixbuf2` `librsvg` `glib2` `harfbuzz`
+`quickjs-ng` — glib for its UTF-8 helpers and harfbuzz for the OpenType MATH
+table, both linked directly rather than only through pango, and quickjs-ng to
+run the mermaid renderer. All from the official repos.
 This list is the one in `packaging/aur/nemdown-git/PKGBUILD`, which a
 clean-chroot build checks; if the two ever disagree, the PKGBUILD is right.
 
 At runtime: `wl-clipboard` for copying, Hack Nerd Font and Hack Nerd Font Mono
 for the typography, a maths font — `otf-stix` (AUR) preferred,
-`otf-latinmodern-math` also works — and `graphviz` for mermaid's graph
-dialects. graphviz is opened with `dlopen` rather than linked, so there is one
-binary either way: installed, the diagrams draw; absent, those fences show
-their source and everything else is unchanged.
+`otf-latinmodern-math` also works — and, optionally, `graphviz` as the
+fallback for mermaid graphs pele refuses. graphviz is opened with `dlopen`
+rather than linked, so there is one binary either way.
 
 ## Rendering
 
@@ -190,31 +190,32 @@ source in a labelled panel.
 
 ### Mermaid
 
-A ```` ```mermaid ```` fence is drawn rather than listed, for four dialects:
+A ```` ```mermaid ```` fence is drawn rather than listed, in every dialect
+mermaid 12 has: flowcharts, sequence, state, class, ER, gantt, pie, mindmap,
+gitGraph, timeline, journey, quadrant, sankey, C4, architecture, block, and
+the rest.
 
-| dialect | drawn by | covers |
-|---|---|---|
-| `flowchart` / `graph` | graphviz | all the node shapes, `-->` `---` `-.->` `==>` `~~~`, both label forms, `&` chains, nested `subgraph` |
-| `sequenceDiagram` | nemdown | `participant`/`actor` with `as`, `autonumber`, every arrow form, activations (`+`/`-` included), self-messages, notes, `alt`/`else`/`opt`/`loop`/`par`/`critical`/`break` |
-| `stateDiagram-v2` | graphviz | `[*]` start and end, transitions with labels, descriptions, composite states, `<<choice>>`, `<<fork>>`/`<<join>>` |
-| `classDiagram` | graphviz | members with visibility, static and abstract, `~T~` generics, `<<annotations>>`, every relationship with multiplicities and labels, `note for` |
+They are drawn by [pele](https://github.com/obsidianmd/pele), the renderer
+Obsidian wrote to replace mermaid.js, running in
+[QuickJS](https://github.com/quickjs-ng/quickjs) — a JavaScript interpreter,
+not a browser. pele needs no DOM: it is handed the source and a function that
+measures text, and returns SVG. The function is Pango, the same shaper librsvg
+then draws the SVG with, so what was measured is what is drawn. Its colours are
+CSS variables, which librsvg does not implement, so nemdown resolves them
+against Catppuccin Mocha before drawing.
 
-There is no JavaScript anywhere in this: mermaid's own renderer is a browser
-program, and running one would undo the point of the project. Three of the four
-dialects are *graphs* — a set of nodes and edges with no inherent geometry — so
-they are translated to dot and laid out by graphviz in-process, themed in
-Catppuccin so the result sits in the document rather than on top of it. The
-fourth is not a graph at all: a sequence diagram's columns and rows are already
-decided by the source, and the only unknown is how wide the text is, which
-Pango answers — so it is measured and drawn directly, and needs no dependency.
+The bundle is linked into the binary, and updating pele is
+`tools/update-pele.sh <version>` and a rebuild. That is the point of running it
+rather than porting it: pele moves faster than a C port of it could follow.
 
-Two consequences worth stating plainly. The output looks like nemdown, not like
-mermaid.js — the same diagram, drawn in the document's own hand. And what is
-supported is these four dialects, not mermaid: a `gantt`, an `erDiagram` or a
-`pie` shows its source, as does anything that fails to parse. A graph dialect
-with graphviz missing says so on the fence label.
+A fence is untrusted input, and the interpreter is given nothing to reach with:
+no file, network or process access, a capped heap, and a time budget after
+which a render is interrupted. Anything pele refuses — a syntax error, a graph
+past the edge limit, a render that overran — falls back to nemdown's own
+renderers for the four dialects it has always drawn, and failing those, to the
+fence's source.
 
-Not yet: footnotes, the other mermaid dialects, a vault browser, WebP.
+Not yet: footnotes, a vault browser, WebP.
 
 ## Development tools
 
@@ -232,7 +233,8 @@ build/check_mermaid [rounds] [builds] # mutation sweep over the mermaid parsers
 
 These three assert rather than report, and `make test` runs them first: a
 regression in the first two is a hang or a path escape, and in the third it is
-a document steering what gets handed to graphviz.
+a document steering what gets handed to graphviz, or the theming pass changing
+the markup of what pele drew.
 
 `render_png` at several scales is the cheapest regression test there is: layout
 is scale-invariant by design, so the content height must not move.

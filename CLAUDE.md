@@ -24,9 +24,11 @@ src/wl/           the Wayland shell: connection, window, buffers, input
 src/ui/           theme, typography, sidebar — the chrome around the document
 src/ui/filechooser.c  the desktop's Open dialog, via xdg-desktop-portal
 src/doc/          the document engine; doc.h is the ONLY header the shell uses
-src/doc/mermaid*.c    mermaid diagrams; graphviz for graphs, by hand for sequences
+src/doc/mermaid_pele.c  mermaid diagrams, every dialect, via pele in QuickJS
+src/doc/mermaid*.c    the native fallback: graphviz for graphs, by hand for sequences
 test/             headless harnesses, assertion checks, fixtures; no compositor
-tools/            lsan.supp, valgrind.supp
+tools/            lsan.supp, valgrind.supp, update-pele.sh
+vendor/pele/      pele's bundle and licence, vendored by tools/update-pele.sh
 ```
 
 ## Commands
@@ -64,30 +66,44 @@ script scaling where Noto reports 60%/50%.
 
 ## Mermaid
 
-A ```` ```mermaid ```` fence is drawn, for four dialects. The split between the
-two renderers is not arbitrary. `flowchart`, `stateDiagram-v2` and
-`classDiagram` are GRAPHS — nodes and edges with no inherent geometry, so
-something has to solve a layout — and that something is graphviz:
-`mermaid_dot.c` translates each dialect to themed dot, `mermaid_gv.c` lays it
-out and rasterises it. `sequenceDiagram` is not a graph at all: its columns and
-rows are decided by the source and the only unknown is text width, which Pango
-already answers, so `mermaid_seq.c` measures and draws it directly and needs no
-dependency.
+A ```` ```mermaid ```` fence is drawn by **pele** (github.com/obsidianmd/pele),
+Obsidian's mermaid renderer, running in **QuickJS** (`quickjs-ng`, linked). It
+covers every dialect mermaid has. pele is TypeScript, and it is run rather than
+ported because it moves faster than a port could follow — nineteen releases in
+its first three weeks. Updating it is `tools/update-pele.sh <version>`, which
+checks the npm registry's sha512, then a rebuild and `make test`. The bundle is
+linked in by `pele_bundle.c` with `.incbin`, so it cannot drift from the binary.
 
-graphviz is **dlopened, not linked** (`mermaid_gv.c`, eight opaque entry
-points). One binary works either way, and the package lists it as `optdepends`
-— the same bargain the maths typesetter strikes with its font. Sequence
-diagrams always draw; the graph dialects fall back to the code panel, whose
-language label then says why.
+`mermaid_pele.c` supplies the three things pele cannot know. **Text widths**,
+through a Pango measurer pele calls back into. **Colours**: pele themes only
+with CSS custom properties, which librsvg ignores, so `nd_mm_pele_theme`
+resolves them against Mocha before librsvg sees the SVG. **Bounds**: the fence
+is untrusted input to a JS engine, so the context gets no std or os module, a
+64MB heap, a 500ms watchdog, and pele's own `maxEdges` and `outputLimit`. A
+render that hits any of them throws, the exception is consumed, and the context
+stays usable for the next fence.
 
-The fence body is untrusted input that becomes DOT SOURCE, so a label escaping
-its quoting would change the graph rather than merely look wrong. Every label
-leaves through exactly one of `nd_mm_dot_str` (quoted attribute) or
-`nd_mm_html_esc` (HTML-like label), and both drop control bytes. That is what
-`test/check_mermaid.c` asserts, over mutated fences: whatever goes in, the dot
-that comes out still has balanced quotes and braces. **If you change a parser,
-run `make test` and then break it on purpose** — four mutations were checked
-when it was written, and its first run found a real bug.
+Anything pele refuses falls back to the native renderers, which predate it and
+still draw four dialects. Their split is not arbitrary. `flowchart`,
+`stateDiagram-v2` and `classDiagram` are GRAPHS, so something has to solve a
+layout, and that is graphviz: `mermaid_dot.c` translates to themed dot and
+`mermaid_gv.c` lays it out. `sequenceDiagram` is not a graph, so
+`mermaid_seq.c` measures and draws it directly. graphviz is **dlopened, not
+linked** — 11MB for a fallback is not worth a hard dependency. quickjs-ng is
+linked because it is 1.4MB with nothing beyond glibc, and because `JSValue`
+crosses its API by value: the header's struct layout is ABI either way.
+
+`NEMDOWN_NO_PELE=1` skips pele, for comparing the two.
+
+Both renderers turn untrusted text into markup something else parses, so both
+are swept by `test/check_mermaid.c`. For the native path: every label leaves
+through `nd_mm_dot_str` or `nd_mm_html_esc`, and the dot that comes out of
+mutated fences still has balanced quotes and braces. For pele: the theming pass
+may rewrite attribute values and nothing else — with every value blanked, the
+markup before and after is identical, no `<` is added and the `"` count does
+not change — over random SVG-shaped strings and over everything pele draws.
+**If you change either, run `make test` and then break it on purpose.** Its
+first pele run found an unbounded name match that deleted text from values.
 
 ## Architecture
 
@@ -240,6 +256,18 @@ These were each a real bug; the comments in the code say so at the site.
   lone `=` line inside a display formula is a setext heading underline and
   turns it into an H1. `preprocess.c` folds the newlines to spaces, which is
   length-preserving and so costs no edit record.
+- **pele's measuring context must not round glyph positions.** Pango rounds
+  by default and librsvg does not, so Hack at 14px measured 8px a glyph and
+  drew 8.43, and a 32-glyph class member ran out through its border. The
+  measurer has its own context, off the document's font map, with
+  `pango_context_set_round_glyph_positions(FALSE)`.
+- **librsvg does not implement `var()`.** An unthemed pele SVG renders every
+  fill black and drops every stroke and label, with no error. All of pele's
+  variables are defined once, on the root, so a flat table resolves them; the
+  pass substitutes inside quoted attribute values only, so a label that reads
+  `var(--x)` is left alone.
+- **`JS_Eval` requires a NUL one past the length**, which is why
+  `pele_bundle.c` appends a byte the length excludes.
 - **Mermaid output is `svg:cairo`, not `svg`.** Plain SVG writes text as
   text and lets the renderer shape it — and librsvg does not shape it the way
   graphviz measured it. graphviz measures through Pango WITH hinting at 96dpi,
