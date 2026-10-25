@@ -185,7 +185,7 @@ valgrind: debug tools
 	@for f in $$(find test/fixtures -name '*.md' | sort); do 	  printf '%-40s' "$$f"; 	  valgrind --tool=memcheck --leak-check=full 	    --show-leak-kinds=definite,indirect --errors-for-leak-kinds=definite,indirect 	    --track-origins=yes --error-exitcode=42 --suppressions=tools/valgrind.supp 	    ./build/render_app "$$f" /tmp/nemdown-vg.png 1000 800 >/dev/null 2>/tmp/nemdown-vg.log 	    && echo "clean" || { echo "ERRORS"; cat /tmp/nemdown-vg.log; exit 1; }; 	done
 
 run: debug
-	./build/debug/nemdown $(FILE)
+	./build/debug/nemdown -f $(FILE)
 
 install: release
 	install -Dm755 build/release/nemdown $(DESTDIR)$(PREFIX)/bin/nemdown

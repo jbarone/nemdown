@@ -15,6 +15,10 @@ syntax highlighting, tables and typeset LaTeX in the page. Catppuccin Mocha.*
 nemdown file.md
 ```
 
+Given a file, nemdown detaches and hands the shell its prompt back, as if run
+with `&`; a file that cannot be opened is still reported in the terminal first.
+`-f` keeps it in the foreground.
+
 The window is a split: a sidebar listing the file's frontmatter properties above
 its table of contents, and the rendered document beside it. Catppuccin Mocha,
 teal accent, no theme switcher.
