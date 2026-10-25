@@ -279,25 +279,33 @@ struct nd_mermaid *nd_mermaid_build(PangoContext *pctx, const char *src,
   if (!src || !len || len > ND_MM_MAX_SRC || !(max_w > 1)) return NULL;
   if (!(zoom > 0.05) || !(zoom < 20)) zoom = 1.0;
 
-  int d = dialect_of(src, len);
-  if (d == MM_NONE) return NULL;
-
   struct nd_mermaid *m = calloc(1, sizeof *m);
   if (!m) return NULL;
 
-  if (d == MM_SEQ) {
-    m->is_seq = true;
-    m->seq = nd_mm_seq_build(pctx, src, len);
-    if (!m->seq) { free(m); return NULL; }
-    nd_mm_seq_size(m->seq, &m->nat_w, &m->nat_h);
-  } else {
-    char *dot = d == MM_FLOW  ? nd_mm_flow_dot(src, len)
-              : d == MM_STATE ? nd_mm_state_dot(src, len)
-                              : nd_mm_class_dot(src, len);
-    if (!dot) { free(m); return NULL; }
-    m->svg = nd_mm_gv_render(dot, &m->nat_w, &m->nat_h);
-    free(dot);
-    if (!m->svg) { free(m); return NULL; }
+  /* pele is asked first, at the column width divided back out of the zoom,
+   * since zoom is applied to the result below. The native renderers remain
+   * behind it for anything it refuses. */
+  if (!getenv("NEMDOWN_NO_PELE"))
+    m->svg = nd_mm_pele_render(pctx, src, len, max_w / zoom, &m->nat_w,
+                               &m->nat_h);
+
+  if (!m->svg) {
+    int d = dialect_of(src, len);
+    if (d == MM_NONE) { free(m); return NULL; }
+    if (d == MM_SEQ) {
+      m->is_seq = true;
+      m->seq = nd_mm_seq_build(pctx, src, len);
+      if (!m->seq) { free(m); return NULL; }
+      nd_mm_seq_size(m->seq, &m->nat_w, &m->nat_h);
+    } else {
+      char *dot = d == MM_FLOW  ? nd_mm_flow_dot(src, len)
+                : d == MM_STATE ? nd_mm_state_dot(src, len)
+                                : nd_mm_class_dot(src, len);
+      if (!dot) { free(m); return NULL; }
+      m->svg = nd_mm_gv_render(dot, &m->nat_w, &m->nat_h);
+      free(dot);
+      if (!m->svg) { free(m); return NULL; }
+    }
   }
 
   if (!(m->nat_w > 0) || !(m->nat_h > 0)) { nd_mermaid_free(m); return NULL; }

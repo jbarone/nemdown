@@ -1,25 +1,17 @@
 /* mermaid.h — mermaid diagrams, rendered rather than shown as source.
  *
- * Four dialects are supported, because they are the four the author of this
- * program draws: `flowchart`, `sequenceDiagram`, `stateDiagram-v2` and
- * `classDiagram`. Anything else — and anything that fails to parse — falls
- * back to the ordinary syntax-highlighted code panel, which is the honest
- * answer: the reader sees exactly what the file says.
+ * Every dialect is drawn by pele, Obsidian's mermaid renderer, run in QuickJS
+ * (mermaid_pele.c). Behind it sit the native renderers, which predate it and
+ * draw four dialects: `flowchart`, `stateDiagram-v2` and `classDiagram` are
+ * graphs, laid out by graphviz, and `sequenceDiagram` is a table of columns
+ * and rows that Pango measures directly. A fence pele refuses goes to them,
+ * and one that both refuse falls back to the ordinary syntax-highlighted code
+ * panel, which is the honest answer: the reader sees exactly what the file
+ * says.
  *
- * Two renderers sit behind this one header, and the split is not arbitrary.
- * Three of the four dialects are *graphs*: a set of nodes and edges with no
- * inherent geometry, so something has to solve a layout for them, and that
- * something is graphviz. The fourth is not a graph at all — a sequence diagram
- * is a table of columns and rows whose only unknown is how wide the text is,
- * and Pango already answers that. Running it through a graph layout engine
- * would be both harder and worse.
- *
- * graphviz is loaded with dlopen at RUN time, not linked at build time, which
- * is the same bargain the maths typesetter strikes with its font: installed,
- * the diagrams draw; absent, they degrade to source and nothing else changes.
- * That keeps one binary working either way and keeps graphviz an `optdepends`
- * rather than an 11MB hard dependency for a feature many documents never use.
- * Sequence diagrams need neither, and so always render.
+ * graphviz is loaded with dlopen at RUN time, not linked at build time:
+ * installed, the fallback can draw graphs; absent, they degrade to source and
+ * nothing else changes. quickjs-ng is linked; see mermaid_pele.c for why.
  */
 
 #ifndef NEMDOWN_MERMAID_H
@@ -40,9 +32,10 @@ bool nd_mermaid_is_fence(const char *lang);
  * because the text is small means the figures too, and a diagram that alone
  * refused to grow would read as a bug.
  *
- * Returns NULL when the dialect is unknown, the source does not parse, the
- * diagram is beyond the size caps, or graphviz is needed and absent — in every
- * one of those cases the caller shows the source instead. */
+ * Returns NULL when neither pele nor the native renderers can draw it: the
+ * dialect is unknown, the source does not parse, the diagram is beyond the
+ * size caps, or graphviz is needed and absent. In every one of those cases the
+ * caller shows the source instead. */
 struct nd_mermaid *nd_mermaid_build(PangoContext *pctx, const char *src,
                                     uint32_t len, double max_w, double zoom);
 

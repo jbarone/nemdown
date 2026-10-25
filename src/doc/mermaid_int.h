@@ -84,6 +84,30 @@ bool nd_mm_gv_available(void);
  * ND_MM_MAX_DIM. */
 RsvgHandle *nd_mm_gv_render(const char *dot, double *w, double *h);
 
+/* ---- pele, in QuickJS -------------------------------------------------- */
+/* Every dialect pele knows. NULL if the source does not parse, the render ran
+ * past its time or heap budget, or the result is past ND_MM_MAX_DIM; the
+ * caller then falls through to the native renderers. NEMDOWN_NO_PELE=1 in the
+ * environment skips pele, for comparing the two. */
+bool nd_mm_pele_available(PangoContext *pctx);
+RsvgHandle *nd_mm_pele_render(PangoContext *pctx, const char *src,
+                              uint32_t len, double max_w, double *w,
+                              double *h);
+
+/* The same render, stopped before theming: pele's own SVG, malloc'd. For
+ * check_mermaid, which needs the input to nd_mm_pele_theme as well as its
+ * output. */
+char *nd_mm_pele_svg(PangoContext *pctx, const char *src, uint32_t len,
+                     double max_w, double *w, double *h);
+
+/* Resolves pele's CSS custom properties, which librsvg does not implement,
+ * against the Mocha theme. Malloc'd; NULL on allocation failure. Exposed for
+ * check_mermaid, which asserts it cannot unbalance the markup. */
+char *nd_mm_pele_theme(const char *svg, size_t len);
+
+/* The bundle, from pele_bundle.c. NUL-terminated, as JS_Eval requires. */
+extern const char nd_pele_js[], nd_pele_js_end[];
+
 /* ---- the three graph dialects ------------------------------------------ */
 /* Each returns malloc'd dot source, or NULL if the source is not that dialect
  * or carries nothing to draw. */

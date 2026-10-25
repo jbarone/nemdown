@@ -318,8 +318,9 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
 
     case ND_MERMAID: {
       /* Rebuilt on every relayout rather than kept across one, exactly as the
-       * maths boxes are: graphviz costs well under a millisecond per diagram,
-       * and a second object lifetime to reason about is not worth saving it. */
+       * maths boxes are: pele costs one to six milliseconds for a typical
+       * diagram, and a second object lifetime to reason about is not worth
+       * saving it. A document with dozens of diagrams would change that. */
       nd_mermaid_free(b->lay.mer);
       b->lay.mer = ctx->pctx
           ? nd_mermaid_build(ctx->pctx, b->code_text, b->code_len, w,

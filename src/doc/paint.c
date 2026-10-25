@@ -98,13 +98,12 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
       cairo_set_line_width(cr, 1.0);
       cairo_stroke(cr);
 
-      /* A mermaid fence only reaches here having failed to draw, and the
-       * commonest reason by far is that graphviz is not installed. Saying so
-       * on the label turns "why is this showing me source?" into an answer. */
+      /* A mermaid fence only reaches here having failed to draw. pele draws
+       * every dialect and graphviz is only its fallback, so the commonest
+       * reason is now that the source does not parse -- which the reader can
+       * see -- and naming graphviz here would send them after the wrong fix. */
       const char *lang = b->code_lang;
-      if (b->kind == ND_MERMAID)
-        lang = nd_mermaid_have_graphviz() ? "mermaid"
-                                          : "mermaid (needs graphviz)";
+      if (b->kind == ND_MERMAID) lang = "mermaid";
 
       if (lang && *lang) {
         nd_src(cr, CTP_OVERLAY0);

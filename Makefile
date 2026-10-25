@@ -40,6 +40,18 @@ endif
 PKG_CFLAGS := $(patsubst -I%,-isystem %,$(shell pkg-config --cflags $(PKGS)))
 PKG_LIBS   := $(shell pkg-config --libs $(PKGS)) -lm
 
+# quickjs-ng runs pele, the mermaid renderer (src/doc/mermaid_pele.c). It ships
+# no pkg-config file, so it is probed by preprocessing its header, which fails
+# here with a name rather than later with a missing-include error.
+ifneq ($(shell echo '\#include <quickjs.h>' | $(CC) -E -x c - >/dev/null 2>&1 && echo ok),ok)
+  $(error missing dependency: quickjs-ng (quickjs.h not found))
+endif
+PKG_LIBS += -lqjs
+
+# pele itself, embedded by src/doc/pele_bundle.c with .incbin -- which the
+# compiler's -MMD output cannot see, so every link of the engine lists it.
+PELE_JS := vendor/pele/pele.global.js
+
 WL_SCANNER := $(shell pkg-config --variable=wayland_scanner wayland-scanner)
 WL_PROTO   := $(shell pkg-config --variable=pkgdatadir wayland-protocols)
 
@@ -121,6 +133,8 @@ $(BUILD)/%.o: %.c
 	@mkdir -p $(@D)
 	$(CC) $(ND_CFLAGS) -c -o $@ $<
 
+$(BUILD)/src/doc/pele_bundle.o: $(PELE_JS)
+
 # Generated protocol code is machine output; we do not lint it.
 $(BUILD)/proto/%.o: $(GEN)/%.c
 	@mkdir -p $(@D)
@@ -136,17 +150,17 @@ build/dump_md4c: test/dump_md4c.c
 	@mkdir -p build
 	$(CC) $(STD) $(WARN) -O0 -g -Isrc $(PKG_CFLAGS) -o $@ $< $(PKG_LIBS)
 
-build/dump_tree: test/dump_tree.c $(ENGINE_SRC)
+build/dump_tree: test/dump_tree.c $(ENGINE_SRC) $(PELE_JS)
 	@mkdir -p build
-	$(CC) $(STD) $(WARN) -O0 -g -Isrc $(PKG_CFLAGS) -o $@ $^ $(PKG_LIBS)
+	$(CC) $(STD) $(WARN) -O0 -g -Isrc $(PKG_CFLAGS) -o $@ $(filter %.c,$^) $(PKG_LIBS)
 
-build/render_png: test/render_png.c $(ENGINE_SRC)
+build/render_png: test/render_png.c $(ENGINE_SRC) $(PELE_JS)
 	@mkdir -p build
-	$(CC) $(STD) $(WARN) -O0 -g -Isrc $(PKG_CFLAGS) -o $@ $^ $(PKG_LIBS)
+	$(CC) $(STD) $(WARN) -O0 -g -Isrc $(PKG_CFLAGS) -o $@ $(filter %.c,$^) $(PKG_LIBS)
 
-build/render_app: test/render_app.c $(ENGINE_SRC) src/ui/sidebar.c
+build/render_app: test/render_app.c $(ENGINE_SRC) src/ui/sidebar.c $(PELE_JS)
 	@mkdir -p build
-	$(CC) $(STD) $(WARN) -O0 -g -Isrc $(PKG_CFLAGS) -o $@ $^ $(PKG_LIBS)
+	$(CC) $(STD) $(WARN) -O0 -g -Isrc $(PKG_CFLAGS) -o $@ $(filter %.c,$^) $(PKG_LIBS)
 
 # Brute-force sweeps over the two functions with the least margin for error:
 # the UTF-8 scrub that keeps Pango from hanging, and the containment check
@@ -167,9 +181,11 @@ build/check_pathguard: test/check_pathguard.c src/doc/pathguard.c
 # balanced. Same reasoning as the two above, same instruction: break it on
 # purpose after changing a parser.
 build/check_mermaid: test/check_mermaid.c src/doc/mermaid.c src/doc/mermaid_dot.c \
-                     src/doc/mermaid_gv.c src/doc/mermaid_seq.c src/util/log.c
+                     src/doc/mermaid_gv.c src/doc/mermaid_seq.c \
+                     src/doc/mermaid_pele.c src/doc/pele_bundle.c src/util/log.c \
+                     $(PELE_JS)
 	@mkdir -p build
-	$(CC) $(STD) $(WARN) -O2 -g -Isrc $(PKG_CFLAGS) -o $@ $^ $(PKG_LIBS)
+	$(CC) $(STD) $(WARN) -O2 -g -Isrc $(PKG_CFLAGS) -o $@ $(filter %.c,$^) $(PKG_LIBS)
 
 tools: build/dump_md4c build/dump_tree build/render_png build/render_app \
        build/check_utf8 build/check_pathguard build/check_mermaid
@@ -195,6 +211,8 @@ install: release
 	# MIT is not in /usr/share/licenses/common, so the text has to ship: an
 	# Arch package without it fails namcap, and the licence requires it anyway.
 	install -Dm644 LICENSE $(DESTDIR)$(LICENSEDIR)/LICENSE
+	# pele is linked into the binary, so its notice ships with it.
+	install -Dm644 vendor/pele/LICENSE $(DESTDIR)$(LICENSEDIR)/LICENSE.pele
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/nemdown \
