@@ -87,6 +87,10 @@ struct nd_app {
 
   bool     selecting;      /* left button held, dragging a text selection */
 
+  /* `?` shows the key list over the document. While it is up, keys other than
+   * ? Esc and q are swallowed, so nothing moves underneath it. */
+  bool     help_visible;
+
   /* Reading guide: a thin marker beside the stop being read. Kept here rather
    * than in the engine because it is a view of input state, like hover. */
   struct nd_filechooser chooser;

@@ -63,7 +63,7 @@ To build without installing, see [Building](#building).
 ### Reading
 
 ```
-j / k              previous / next block      { / }     same, always
+j / k              next / previous block      } / {     same, guide on or off
 g / G              first / last block         f         reading guide on/off
 Home / End         first / last block
 up / down          scroll a line              PgUp/PgDn page
@@ -79,7 +79,8 @@ o                  open a file                /         search
 b                  toggle the sidebar         r         reload from disk
 + / - / 0          zoom in / out / reset      Backspace back to the last note
 Ctrl-C             copy                       q         quit
-Esc                close search, then clear a selection, then quit
+?                  show these keys in the window
+Esc                close the key list or search, then clear a selection, then quit
 ```
 
 `+` also accepts `=` so it needs no shift, and `+ - 0` work on the numeric

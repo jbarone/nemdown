@@ -14,6 +14,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "ui/keys.h"
 #include "ui/theme.h"
 #include "wl/wl_cursor.h"
 #include "util/log.h"
@@ -410,9 +411,28 @@ static bool search_key(struct nd_app *app, xkb_keysym_t sym) {
 }
 
 void nd_app_key(struct nd_app *app, xkb_keysym_t sym, bool is_repeat) {
-  (void)is_repeat;
-
   if (app->searching && search_key(app, sym)) return;
+
+  /* Only these three act while the key list is up. "Any key closes it" would
+   * not work: typing `?` is Shift then ?, and Shift arrives as a key of its
+   * own, so the list would close on the press that opened it. A held `?`
+   * repeats, and toggling on each repeat would flicker. */
+  if (app->help_visible) {
+    if (sym == XKB_KEY_q) { nd_app_quit(app); return; }
+    if ((sym == XKB_KEY_question && !is_repeat) || sym == XKB_KEY_Escape) {
+      app->help_visible = false;
+      mark(app, ND_DIRTY_ALL);
+    }
+    return;
+  }
+  if (sym == XKB_KEY_question) {
+    if (!is_repeat) {
+      app->help_visible = true;
+      mark(app, ND_DIRTY_ALL);
+    }
+    return;
+  }
+
   double line = app->scroll.line_height;
   double page = (double)app->win.h * 0.9;
 
@@ -962,6 +982,14 @@ void nd_app_pointer_button(struct nd_app *app, double x, double y, bool pressed,
     return;
   }
 
+  /* A click dismisses the key list and does nothing else: the link or the
+   * divider under it is hidden, and activating it unseen would surprise. */
+  if (app->help_visible) {
+    app->help_visible = false;
+    mark(app, ND_DIRTY_ALL);
+    return;
+  }
+
   /* Multi-click: same spot AND within the usual double-click window. Without
    * the time check, two slow clicks in one place would read as a double. */
   bool near = fabs(x - app->last_click_x) < 4.0 &&
@@ -1267,6 +1295,9 @@ void nd_app_paint(struct nd_app *app, cairo_t *cr, int w, int h, double scale) {
     cairo_show_text(cr, flashing ? "\xEF\x80\x8C" : "\xEF\x83\x85");
   }
   cairo_restore(cr);
+
+  /* Last, over the sidebar and the document both. */
+  if (app->help_visible) nd_keys_paint(cr, (double)w, (double)h, scale);
 }
 
 /* ---- file watching ------------------------------------------------------- */

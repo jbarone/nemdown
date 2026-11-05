@@ -15,20 +15,19 @@
 
 #include "app.h"
 #include "ui/filechooser.h"
+#include "ui/keys.h"
 #include "util/log.h"
 
 static void usage(FILE *out) {
   fputs("usage: nemdown [-f] [file.md]\n"
         "\n"
-        "  -f, --foreground stay attached to the terminal\n"
+        "  -f, --foreground  stay attached to the terminal\n"
         "\n"
-        "  j / k or { / }   block         g / G   first / last block\n"
-        "  arrows           scroll        f       reading guide on/off\n"
-        "  PgUp / PgDn      page          b       toggle sidebar\n"
-        "  o                open a file   q / Esc quit\n"
-        "\n"
-        "With no file, the desktop's Open dialog asks for one.\n",
+        "With no file, the desktop's Open dialog asks for one.\n"
+        "\n",
         out);
+  /* The same table `?` draws in the window, so the two cannot disagree. */
+  nd_keys_print(out);
 }
 
 /* Given a file, behave like `nemdown file.md &` without the `&`: the parent
