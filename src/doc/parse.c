@@ -355,15 +355,40 @@ static int enter_block(MD_BLOCKTYPE type, void *detail, void *ud) {
     case MD_BLOCK_HTML:
       push(b, node_new(b, ND_PARA)); /* unreachable with MD_FLAG_NOHTML */
       break;
+
+    /* md4c 0.6 extensions, each behind a flag parse() does not set. They push
+     * nothing, so leave_block must pop nothing for them either — see
+     * block_is_transparent. Any children attach to the enclosing block. */
+    case MD_BLOCK_FOOTNOTE_DEF_SECTION:
+    case MD_BLOCK_FOOTNOTE_DEF:
+    case MD_BLOCK_ADMONITION:
+    case MD_BLOCK_BLANK:
+      break;
   }
   return 0;
+}
+
+/* Blocks enter_block does not push. leave_block must skip exactly these, or
+ * it pops a block that something else pushed. */
+static bool block_is_transparent(MD_BLOCKTYPE type) {
+  switch (type) {
+    case MD_BLOCK_THEAD:
+    case MD_BLOCK_TBODY:
+    case MD_BLOCK_FOOTNOTE_DEF_SECTION:
+    case MD_BLOCK_FOOTNOTE_DEF:
+    case MD_BLOCK_ADMONITION:
+    case MD_BLOCK_BLANK:
+      return true;
+    default:
+      return false;
+  }
 }
 
 static int leave_block(MD_BLOCKTYPE type, void *detail, void *ud) {
   (void)detail;
   struct builder *b = ud;
 
-  if (type == MD_BLOCK_THEAD || type == MD_BLOCK_TBODY) return 0;
+  if (block_is_transparent(type)) return 0;
 
   implicit_close(b);
 
@@ -455,6 +480,17 @@ static int enter_span(MD_SPANTYPE type, void *detail, void *ud) {
       break;
     case MD_SPAN_LATEXMATH_DISPLAY:
       f->flags = ND_RUN_MATH | ND_RUN_MATH_DISPLAY;
+      break;
+
+    /* md4c 0.6 extensions, each behind a flag parse() does not set. The frame
+     * is still pushed, so leave_span's pop stays matched; with no flags it
+     * records no run and any text inside reads as plain. */
+    case MD_SPAN_INS:
+    case MD_SPAN_SPOILER:
+    case MD_SPAN_SUPERSCRIPT:
+    case MD_SPAN_SUBSCRIPT:
+    case MD_SPAN_FOOTNOTE_REF:
+    case MD_SPAN_MARK:
       break;
   }
 
