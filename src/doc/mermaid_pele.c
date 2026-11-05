@@ -63,7 +63,13 @@ static double now_ms(void) {
   return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
 }
 
+/* quickjs-ng 0.18 changed the handler's first argument from the runtime to
+   the context. It is unused here, so take whichever the header declares. */
+#if QJS_VERSION_MAJOR > 0 || QJS_VERSION_MINOR >= 18
+static int watchdog(JSContext *r, void *op) {
+#else
 static int watchdog(JSRuntime *r, void *op) {
+#endif
   (void)r; (void)op;
   return deadline > 0 && now_ms() > deadline;
 }
