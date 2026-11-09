@@ -533,7 +533,12 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
                                      : over / ncols;
           final_w[c] = natural[c] - give;
           if (final_w[c] < minimum[c]) final_w[c] = minimum[c];
-          if (final_w[c] < 24.0) final_w[c] = 24.0;
+          /* The floor keeps a wide column from being squeezed to a sliver, so
+           * it must never exceed what the column asked for: `#` at 9px raised
+           * to 24 widens the table past its width with nothing paying for it,
+           * and the last column's text runs out through the border. */
+          double floor_w = natural[c] < 24.0 ? natural[c] : 24.0;
+          if (final_w[c] < floor_w) final_w[c] = floor_w;
         }
       }
 
