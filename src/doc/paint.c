@@ -9,6 +9,7 @@
 
 #include "doc/callout.h"
 #include "doc/images.h"
+#include "doc/layout.h"
 #include "ui/theme.h"
 #include "ui/typography.h"
 
@@ -43,6 +44,32 @@ static void paint_children(cairo_t *cr, nd_block *b, double y0, double y1) {
     if (k->lay.y + k->lay.h < y0) continue;         /* above it */
     paint_block(cr, k, y0, y1);
   }
+}
+
+/* Drawn, not a glyph: a font checkbox gives no control over stroke weight
+ * and its centring depends on metrics we would have to fight. */
+static void paint_task_box(cairo_t *cr, const nd_block *b) {
+  double bx, by, s;
+  nd_task_box(b, &bx, &by, &s);
+  cairo_save(cr);
+  rounded_rect(cr, bx, by, s, s, 4.0);
+  if (b->item_checked) {
+    nd_src(cr, CTP_TEAL);
+    cairo_fill(cr);
+    nd_src(cr, CTP_BASE);
+    cairo_set_line_width(cr, 2.0);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+    cairo_move_to(cr, bx + 0.26 * s, by + 0.53 * s);
+    cairo_line_to(cr, bx + 0.44 * s, by + 0.72 * s);
+    cairo_line_to(cr, bx + 0.76 * s, by + 0.30 * s);
+    cairo_stroke(cr);
+  } else {
+    nd_src(cr, CTP_OVERLAY1);
+    cairo_set_line_width(cr, 1.5);
+    cairo_stroke(cr);
+  }
+  cairo_restore(cr);
 }
 
 static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
@@ -249,6 +276,7 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
         /* No vertical rules: Obsidian's tables are horizontal-only. */
         for (uint32_t c = 0; c < row->nkids; c++) {
           nd_block *cell = row->kids[c];
+          if (cell->item_is_task) paint_task_box(cr, cell);
           if (!cell->lay.pl) continue;
           nd_src(cr, row->row_is_header ? CTP_SUBTEXT1 : CTP_TEXT);
           cairo_move_to(cr, cell->lay.x, cell->lay.y);
@@ -371,28 +399,7 @@ static void paint_block(cairo_t *cr, nd_block *b, double y0, double y1) {
       cairo_move_to(cr, b->lay.x + 8.0, baseline);
 
       if (b->item_is_task) {
-        /* Drawn, not a glyph: a font checkbox gives no control over stroke
-         * weight and its centring depends on metrics we would have to fight. */
-        double s = bs->size;
-        double bx = b->lay.x + 6.0;
-        double by = b->lay.y + (bs->line_height - s) / 2.0;
-        rounded_rect(cr, bx, by, s, s, 4.0);
-        if (b->item_checked) {
-          nd_src(cr, CTP_TEAL);
-          cairo_fill(cr);
-          nd_src(cr, CTP_BASE);
-          cairo_set_line_width(cr, 2.0);
-          cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-          cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-          cairo_move_to(cr, bx + 0.26 * s, by + 0.53 * s);
-          cairo_line_to(cr, bx + 0.44 * s, by + 0.72 * s);
-          cairo_line_to(cr, bx + 0.76 * s, by + 0.30 * s);
-          cairo_stroke(cr);
-        } else {
-          nd_src(cr, CTP_OVERLAY1);
-          cairo_set_line_width(cr, 1.5);
-          cairo_stroke(cr);
-        }
+        paint_task_box(cr, b);
       } else if (b->lay.marker) {
         /* Ordered list: the number was laid out with tabular figures so the
          * markers share a right edge. */

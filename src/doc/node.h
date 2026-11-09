@@ -93,6 +93,7 @@ struct nd_block {
   uint8_t  level;        /* heading 1..6 */
   uint8_t  list_ordered, list_tight;
   uint32_t list_start;
+  /* Items, and body cells that open with a mark (see cell_task in parse.c). */
   uint8_t  item_is_task, item_checked;
   uint32_t item_mark_offset; /* source byte of the char between the brackets */
   uint8_t  cell_align;

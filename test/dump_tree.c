@@ -74,7 +74,11 @@ static void walk(const nd_block *b, int depth) {
         printf(" task checked=%u src_offset=%u", b->item_checked, b->item_mark_offset);
       break;
     case ND_CODE:  printf(" lang=%s len=%u", b->code_lang ? b->code_lang : "-", b->code_len); break;
-    case ND_CELL:  printf(" align=%u", b->cell_align); break;
+    case ND_CELL:
+      printf(" align=%u", b->cell_align);
+      if (b->item_is_task)
+        printf(" task checked=%u src_offset=%u", b->item_checked, b->item_mark_offset);
+      break;
     case ND_ROW:   printf(" header=%u", b->row_is_header); break;
     case ND_IMAGE: printf(" src=%s", b->img_src ? b->img_src : "-"); break;
     case ND_CALLOUT:

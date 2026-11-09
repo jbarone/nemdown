@@ -4,6 +4,7 @@
 
 #include <pango/pangocairo.h>
 
+#include "doc/layout.h"
 #include "ui/typography.h"
 
 static bool hit_block(nd_block *b, double x, double y, nd_hit *out);
@@ -20,10 +21,8 @@ static bool hit_children(nd_block *b, double x, double y, nd_hit *out) {
 /* Cheap, unambiguous rect tests come first; text is the fallback. */
 static bool hit_checkbox(nd_block *b, double x, double y, nd_hit *out) {
   if (!b->item_is_task) return false;
-  const nd_style *bs = &nd_styles[ND_ST_BODY];
-  double s = bs->size;
-  double bx = b->lay.x + 6.0;
-  double by = b->lay.y + (bs->line_height - s) / 2.0;
+  double bx, by, s;
+  nd_task_box(b, &bx, &by, &s);
 
   /* A checkbox is a small target, so the hit area is padded. */
   if (x < bx - 3 || x > bx + s + 3 || y < by - 3 || y > by + s + 3) return false;
@@ -139,7 +138,8 @@ static bool hit_block(nd_block *b, double x, double y, nd_hit *out) {
   if (nd_block_is_code_panel(b)) return hit_code(b, x, y, out);
   if (b->kind == ND_CALLOUT && hit_fold(b, x, y, out)) return true;
 
-  if (b->kind == ND_ITEM && hit_checkbox(b, x, y, out)) return true;
+  if ((b->kind == ND_ITEM || b->kind == ND_CELL) && hit_checkbox(b, x, y, out))
+    return true;
 
   if (b->kind == ND_IMAGE && b->lay.img_w > 0 &&
       x >= b->lay.x && x <= b->lay.x + b->lay.img_w) {

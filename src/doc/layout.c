@@ -495,10 +495,11 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
                                                 : &nd_styles[ND_ST_TABLE_CELL];
         for (uint32_t c = 0; c < row->nkids && c < ncols; c++) {
           nd_block *cell = row->kids[c];
+          double box = cell->item_is_task ? nd_cell_task_indent() : 0;
           PangoLayout *pl = nd_layout_for(ctx, &cell->inl, cs, -1);
           int pw, ph;
           pango_layout_get_pixel_size(pl, &pw, &ph);
-          if (pw > natural[c]) natural[c] = pw;
+          if (pw + box > natural[c]) natural[c] = pw + box;
           g_object_unref(pl);
 
           /* Width 1 forces Pango to wrap at every opportunity, so the reported
@@ -506,7 +507,7 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
           pl = nd_layout_for(ctx, &cell->inl, cs, 1.0 / PANGO_SCALE);
           pango_layout_set_width(pl, 1);
           pango_layout_get_pixel_size(pl, &pw, &ph);
-          if (pw > minimum[c]) minimum[c] = pw;
+          if (pw + box > minimum[c]) minimum[c] = pw + box;
           g_object_unref(pl);
         }
       }
@@ -561,7 +562,11 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
 
         for (uint32_t c = 0; c < row->nkids && c < ncols; c++) {
           nd_block *cell = row->kids[c];
-          cell->lay.pl = nd_layout_for(ctx, &cell->inl, cs, final_w[c]);
+          /* The box takes a hanging indent: the whole text moves right, so a
+           * wrapped title lines up under its first word, not under the box. */
+          double box = cell->item_is_task ? nd_cell_task_indent() : 0;
+          if (box > final_w[c] - 1) box = 0;
+          cell->lay.pl = nd_layout_for(ctx, &cell->inl, cs, final_w[c] - box);
           static const PangoAlignment amap[] = {
             PANGO_ALIGN_LEFT, PANGO_ALIGN_LEFT, PANGO_ALIGN_CENTER,
             PANGO_ALIGN_RIGHT
@@ -570,9 +575,9 @@ static double layout_block(struct nd_layout_ctx *ctx, nd_block *b,
               cell->lay.pl, amap[cell->cell_align < 4 ? cell->cell_align : 0]);
           int pw, ph;
           pango_layout_get_pixel_size(cell->lay.pl, &pw, &ph);
-          cell->lay.x = cx + ND_CELL_PAD_X;
+          cell->lay.x = cx + ND_CELL_PAD_X + box;
           cell->lay.y = ty + ND_CELL_PAD_Y;
-          cell->lay.w = final_w[c];
+          cell->lay.w = final_w[c] - box;
           cell->lay.h = ph;
           if (ph > rowh) rowh = ph;
           cx += final_w[c] + pad;
@@ -681,4 +686,24 @@ void nd_layout_free_tree(nd_block *root) {
   free(root->lay.rowy); root->lay.rowy = NULL;
   nd_mermaid_free(root->lay.mer); root->lay.mer = NULL;
   for (uint32_t i = 0; i < root->nkids; i++) nd_layout_free_tree(root->kids[i]);
+}
+
+#define ND_TASK_CELL_GAP 8.0
+
+double nd_cell_task_indent(void) {
+  return nd_styles[ND_ST_TABLE_CELL].size + ND_TASK_CELL_GAP;
+}
+
+void nd_task_box(const nd_block *b, double *bx, double *by, double *s) {
+  if (b->kind == ND_CELL) {
+    const nd_style *cs = &nd_styles[ND_ST_TABLE_CELL];
+    *s  = cs->size;
+    *bx = b->lay.x - nd_cell_task_indent();
+    *by = b->lay.y + (cs->line_height - *s) / 2.0;
+    return;
+  }
+  const nd_style *bs = &nd_styles[ND_ST_BODY];
+  *s  = bs->size;
+  *bx = b->lay.x + 6.0;
+  *by = b->lay.y + (bs->line_height - *s) / 2.0;
 }

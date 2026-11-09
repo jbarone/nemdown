@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "doc/entity.h"
+#include "doc/inline.h"
 #include "util/log.h"
 
 /* Deep enough for any document a person writes, and bounded so the recursive
@@ -83,6 +84,9 @@ struct builder {
   size_t    alt_len;
   uint32_t  first_break;
   bool      leaf_implicit; /* leaf was synthesised for bare text, see below */
+  /* Where the current leaf's first text came from in `src->body`, or NULL.
+   * Only table cells use it: see cell_task. */
+  const char *leaf_src0;
   struct vec text;      /* char   — current inline text */
   struct vec runs;      /* nd_run — current inline runs */
 
@@ -143,6 +147,7 @@ static void inl_begin(struct builder *b) {
   b->spsp = 0;
   b->span_overflow = 0;
   b->first_break = 0;
+  b->leaf_src0 = NULL;
 }
 
 static void inl_put(struct builder *b, const char *s, size_t n) {
@@ -368,6 +373,43 @@ static int enter_block(MD_BLOCKTYPE type, void *detail, void *ud) {
   return 0;
 }
 
+/* GFM only has task marks on list items, so `| [ ] Book |` reaches us as the
+ * literal text "[ ] Book". Obsidian users write checklists as tables anyway,
+ * so a body cell that STARTS with a mark becomes a checkbox here.
+ *
+ * Write-back needs the mark's byte in the file, and md4c gives text no offset;
+ * src0 is the pointer md4c passed for the cell's first text, which points into
+ * the buffer it parsed. The source is checked as well as the rendered text, so
+ * the offset is only trusted when both agree: `\[ ]`, an entity, or a span
+ * opening the cell all produce no src0 or a mismatch and stay literal. */
+static void cell_task(struct builder *b, nd_block *n, const char *src0) {
+  const nd_inline *in = &n->inl;
+  if (!src0 || in->len < 3) return;
+  const char *t = in->text;
+  if (t[0] != '[' || t[2] != ']') return;
+  if (t[1] != ' ' && t[1] != 'x' && t[1] != 'X') return;
+  if (in->len > 3 && t[3] != ' ') return;
+
+  const char *body = b->src->body;
+  size_t off = (size_t)(src0 - body);
+  if (off + 3 > b->src->body_len || memcmp(src0, t, 3) != 0) return;
+  /* Escaped `\[` puts src0 one past the backslash; only a cell's own leading
+   * whitespace or its pipe may sit before the mark. */
+  if (off > 0 && body[off - 1] != ' ' && body[off - 1] != '\t' &&
+      body[off - 1] != '|')
+    return;
+
+  uint32_t cut = in->len > 3 ? 4 : 3;
+  for (uint32_t i = 0; i < in->nruns; i++)
+    if (in->runs[i].start < cut) return;
+
+  nd_range del = {0, cut};
+  nd_inline_delete(b->a, &n->inl, &del, 1);
+  n->item_is_task = 1;
+  n->item_checked = (t[1] == 'x' || t[1] == 'X');
+  n->item_mark_offset = (uint32_t)nd_source_orig_offset(b->src, off + 1);
+}
+
 /* Blocks enter_block does not push. leave_block must skip exactly these, or
  * it pops a block that something else pushed. */
 static bool block_is_transparent(MD_BLOCKTYPE type) {
@@ -402,10 +444,13 @@ static int leave_block(MD_BLOCKTYPE type, void *detail, void *ud) {
     case MD_BLOCK_P:
     case MD_BLOCK_H:
     case MD_BLOCK_TH:
-    case MD_BLOCK_TD:
+    case MD_BLOCK_TD: {
+      const char *src0 = b->leaf_src0;
       inl_commit(b, &n->inl);
+      if (type == MD_BLOCK_TD) cell_task(b, n, src0);
       b->leaf = NULL;
       break;
+    }
 
     case MD_BLOCK_CODE:
       n->code_len = (uint32_t)b->text.len;
@@ -568,6 +613,12 @@ static int text_cb(MD_TEXTTYPE type, const MD_CHAR *text, MD_SIZE size, void *ud
     }
 
     default:
+      /* For normal text md4c hands over a pointer into the buffer it parses,
+       * which is the only route from rendered text back to a source byte. */
+      if (type == MD_TEXT_NORMAL && b->text.len == 0 && b->spsp == 0 &&
+          !b->leaf_src0 && b->leaf->kind == ND_CELL &&
+          text >= b->src->body && text < b->src->body + b->src->body_len)
+        b->leaf_src0 = text;
       inl_put(b, text, size);
       break;
   }

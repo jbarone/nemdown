@@ -31,4 +31,11 @@ double nd_layout_tree(struct nd_layout_ctx *ctx, nd_block *root);
 
 void nd_layout_free_tree(nd_block *root);
 
+/* A task cell's text is pushed right by this much to make room for its box. */
+double nd_cell_task_indent(void);
+
+/* Where a task item's or task cell's checkbox is drawn: one function for the
+ * painter and the hit test, so the box and its target cannot drift apart. */
+void nd_task_box(const nd_block *b, double *bx, double *by, double *s);
+
 #endif /* NEMDOWN_LAYOUT_H */
